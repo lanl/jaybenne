@@ -1,0 +1,95 @@
+# ========================================================================================
+#  (C) (or copyright) 2023-2024. Triad National Security, LLC. All rights reserved.
+#
+#  This program was produced under U.S. Government contract 89233218CNA000001 for Los
+#  Alamos National Laboratory (LANL), which is operated by Triad National Security, LLC
+#  for the U.S. Department of Energy/National Nuclear Security Administration. All rights
+#  in the program are reserved by Triad National Security, LLC, and the U.S. Department
+#  of Energy/National Nuclear Security Administration. The Government is granted for
+#  itself and others acting on its behalf a nonexclusive, paid-up, irrevocable worldwide
+#  license in this material to reproduce, prepare derivative works, distribute copies to
+#  the public, perform publicly and display publicly, and to permit others to do so.
+# ========================================================================================
+
+<parthenon/job>
+problem_id = stepdiff
+
+<parthenon/mesh>
+nghost = 2
+refinement = static
+
+nx1 = 128
+x1min = -0.5
+x1max = 0.5
+ix1_bc = outflow
+ox1_bc = outflow
+
+nx2 = 64
+x2min = -0.25
+x2max = 0.25
+ix2_bc = periodic
+ox2_bc = periodic
+
+nx3 = 1
+x3min = -0.25
+x3max = 0.25
+ix3_bc = periodic
+ox3_bc = periodic
+
+<parthenon/swarm>
+ix1_bc = jaybenne_reflecting
+ox1_bc = jaybenne_reflecting
+ix2_bc = periodic
+ox2_bc = periodic
+ix3_bc = periodic
+ox3_bc = periodic
+
+<parthenon/meshblock>
+nx1 = 32
+nx2 = 32
+nx3 = 1
+
+<parthenon/static_refinement1>
+level = 1
+x1min = -0.25
+x1max = 0.25
+x2min = -0.25
+x2max = 0.25
+x3min = -0.25
+x3max = 0.25
+
+<parthenon/time>
+tlim = 3.335641e-10
+integrator = rk1
+
+<jaybenne>
+use_ddmc = true
+num_particles = 100000
+dt = 3.335641e-11
+numin = 1.e10
+numax = 1.e20
+do_emission = false
+do_feedback = false
+transport_model = zone_size
+tracking_algo = history # event
+source_strategy = uniform
+seed = 349857
+
+<mcblock>
+opacity_model = none
+scattering_model = constant
+scattering_constant_value = 1.0e3
+specific_heat = 1.0e8 # erg/K/g
+initial_density = 1.0 # g cm^-3
+initial_temperature = 1.0e5 # K
+initial_radiation = thermal
+
+<parthenon/output0>
+file_type = hdf5
+dt = 3.335641e-10
+variables = field.material.density,         &
+            field.material.sie,             &
+            field.material.internal_energy, &
+            field.jaybenne.energy_tally
+swarms = photons
+swarm_variables = swarm.x, swarm.y

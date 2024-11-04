@@ -1,0 +1,82 @@
+# ========================================================================================
+#  (C) (or copyright) 2023-2024. Triad National Security, LLC. All rights reserved.
+#
+#  This program was produced under U.S. Government contract 89233218CNA000001 for Los
+#  Alamos National Laboratory (LANL), which is operated by Triad National Security, LLC
+#  for the U.S. Department of Energy/National Nuclear Security Administration. All rights
+#  in the program are reserved by Triad National Security, LLC, and the U.S. Department
+#  of Energy/National Nuclear Security Administration. The Government is granted for
+#  itself and others acting on its behalf a nonexclusive, paid-up, irrevocable worldwide
+#  license in this material to reproduce, prepare derivative works, distribute copies to
+#  the public, perform publicly and display publicly, and to permit others to do so.
+# ========================================================================================
+
+# NOTE(@pdmullen): The following is largely borrowed from the open-source AthenaK
+# software, adapted to LANL Darwin runners
+
+variables:
+  GIT_SUBMODULE_STRATEGY: recursive
+
+stages:
+  - ci_format
+  - ci_cpu
+  - ci_gpu
+
+default:
+  tags:
+    - darwin-slurm-shared
+
+.default-job:
+  rules:
+    - if: '$CI_MERGE_REQUEST_TITLE =~ /Draft:/ || $CI_MERGE_REQUEST_TITLE =~ /WIP:/'
+      when: never
+    - if: '$CI_PIPELINE_SOURCE == "merge_request_event"'
+  id_tokens:
+    SITE_ID_TOKEN:
+      aud: https://gitlab.lanl.gov
+
+ci_format-job:
+  extends: .default-job
+  stage: ci_format
+  variables:
+    SCHEDULER_PARAMETERS: "--nodes 1 --partition=skylake-gold"
+  script:
+    - cd $CI_PROJECT_DIR
+    - source env/bash
+    - VERBOSE=1 ./style/format.sh
+    - git diff --exit-code --ignore-submodules
+
+ci_cpu-job:
+  extends: .default-job
+  stage: ci_cpu
+  variables:
+    SCHEDULER_PARAMETERS: "--nodes 1 --partition=skylake-gold"
+  script:
+    - cd $CI_PROJECT_DIR
+    - source env/bash
+    - build_jaybenne
+    - cd ../tst
+    - ./stepdiff.py --executable ../build_darwin-skylake-gold/mcblock --input ../inputs/stepdiff.in --use_mpiexec
+    - ./stepdiff.py --executable ../build_darwin-skylake-gold/mcblock --input ../inputs/stepdiff_ddmc.in --use_mpiexec
+    - ./stepdiff_smr.py --executable ../build_darwin-skylake-gold/mcblock --input ../inputs/stepdiff_smr.in --use_mpiexec
+    - ./stepdiff_smr.py --executable ../build_darwin-skylake-gold/mcblock --input ../inputs/stepdiff_smr_ddmc.in --use_mpiexec
+    - ./stepdiff_smr.py --executable ../build_darwin-skylake-gold/mcblock --input ../inputs/stepdiff_smr_ddmc.in --use_mpiexec --mpi_nthreads 8
+    - ./stepdiff_smr.py --executable ../build_darwin-skylake-gold/mcblock --input ../inputs/stepdiff_smr_hybrid.in --use_mpiexec
+    - ./stepdiff_smr.py --executable ../build_darwin-skylake-gold/mcblock --input ../inputs/stepdiff_smr_hybrid.in --use_mpiexec --mpi_nthreads 8
+
+
+ci_gpu-job:
+  extends: .default-job
+  stage: ci_gpu
+  variables:
+    SCHEDULER_PARAMETERS: "--nodes 1 --partition=volta-x86"
+  script:
+    - cd $CI_PROJECT_DIR
+    - source env/bash
+    - build_jaybenne
+    - cd ../tst
+    - ./stepdiff.py --executable ../build_darwin-volta-x86/mcblock --input ../inputs/stepdiff.in --use_mpiexec
+    - ./stepdiff.py --executable ../build_darwin-volta-x86/mcblock --input ../inputs/stepdiff_ddmc.in --use_mpiexec
+    - ./stepdiff_smr.py --executable ../build_darwin-volta-x86/mcblock --input ../inputs/stepdiff_smr.in --use_mpiexec
+    - ./stepdiff_smr.py --executable ../build_darwin-volta-x86/mcblock --input ../inputs/stepdiff_smr_ddmc.in --use_mpiexec
+    - ./stepdiff_smr.py --executable ../build_darwin-volta-x86/mcblock --input ../inputs/stepdiff_smr_hybrid.in --use_mpiexec

@@ -1,0 +1,76 @@
+# ========================================================================================
+#  (C) (or copyright) 2023-2024. Triad National Security, LLC. All rights reserved.
+#
+#  This program was produced under U.S. Government contract 89233218CNA000001 for Los
+#  Alamos National Laboratory (LANL), which is operated by Triad National Security, LLC
+#  for the U.S. Department of Energy/National Nuclear Security Administration. All rights
+#  in the program are reserved by Triad National Security, LLC, and the U.S. Department
+#  of Energy/National Nuclear Security Administration. The Government is granted for
+#  itself and others acting on its behalf a nonexclusive, paid-up, irrevocable worldwide
+#  license in this material to reproduce, prepare derivative works, distribute copies to
+#  the public, perform publicly and display publicly, and to permit others to do so.
+# ========================================================================================
+
+<parthenon/job>
+problem_id = inf
+
+<parthenon/mesh>
+refinement = none
+
+nx1 = 4
+x1min = -0.5
+x1max = 0.5
+ix1_bc = periodic
+ox1_bc = periodic
+
+nx2 = 4
+x2min = -0.5
+x2max = 0.5
+ix2_bc = periodic
+ox2_bc = periodic
+
+nx3 = 4
+x3min = -0.5
+x3max = 0.5
+ix3_bc = periodic
+ox3_bc = periodic
+
+# Uncomment to enable multiple meshblocks
+#<parthenon/meshblock>
+#nx1 = 4
+#nx2 = 1
+#nx3 = 1
+
+<parthenon/time>
+tlim = 1.e-10
+integrator = rk1
+
+<jaybenne>
+num_particles = 200
+dt = 1.e-12
+numin = 1.e10
+numax = 1.e20
+do_emission = true
+do_feedback = false
+opacity_model = constant
+opacity_constant_value = 1.0 # cm^2/g
+scattering_model = constant
+scattering_constant_value = 1.0e5
+transport_model = zone_size
+tracking_algo = history # event
+source_strategy = uniform
+seed = 349857
+
+<mcblock>
+specific_heat = 1.0e8 # erg/K/g
+initial_density = 1.0 # g cm^-3
+initial_temperature = 1.0 # keV
+initial_radiation = thermal
+
+<parthenon/output0>
+file_type = hdf5
+dt = 0.1
+variables = field.material.density,         &
+            field.material.sie,             &
+            field.material.internal_energy, &
+            field.jaybenne.energy_tally

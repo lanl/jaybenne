@@ -1,0 +1,34 @@
+//========================================================================================
+// (C) (or copyright) 2024. Triad National Security, LLC. All rights reserved.
+//
+// This program was produced under U.S. Government contract 89233218CNA000001 for Los
+// Alamos National Laboratory (LANL), which is operated by Triad National Security, LLC
+// for the U.S. Department of Energy/National Nuclear Security Administration. All rights
+// in the program are reserved by Triad National Security, LLC, and the U.S. Department
+// of Energy/National Nuclear Security Administration. The Government is granted for
+// itself and others acting on its behalf a nonexclusive, paid-up, irrevocable worldwide
+// license in this material to reproduce, prepare derivative works, distribute copies to
+// the public, perform publicly and display publicly, and to permit others to do so.
+//========================================================================================
+
+#ifndef JAYBENNE_JAYBENNE_CONFIG_HPP_
+#define JAYBENNE_JAYBENNE_CONFIG_HPP_
+
+// clang-format off
+
+#include "@JAYBENNE_EOS_HEADER@"
+#include "@JAYBENNE_OPACITY_HEADER@"
+
+using @JAYBENNE_EOS_TYPE@;
+using @JAYBENNE_ABSORPTION_OPACITY_TYPE@;
+using @JAYBENNE_SCATTERING_OPACITY_TYPE@;
+
+#include "@JAYBENNE_HOST_VARIABLE_HEADER@"
+
+#define HOST_DENSITY @JAYBENNE_HOST_DENSITY_VARIABLE@
+#define HOST_SPECIFIC_INTERNAL_ENERGY @JAYBENNE_HOST_SPECIFIC_INTERNAL_ENERGY_VARIABLE@
+#define HOST_UPDATE_ENERGY @JAYBENNE_HOST_UPDATE_ENERGY_VARIABLE@
+
+// clang-format on
+
+#endif // JAYBENNE_JAYBENNE_CONFIG_HPP_
