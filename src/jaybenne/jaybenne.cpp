@@ -130,26 +130,27 @@ TaskCollection RadiationStep(Mesh *pmesh, const Real t_start, const Real dt) {
 //! parameters associated with Jaybenne, and enrolls the data variables associated with
 //! this physics package.
 std::shared_ptr<StateDescriptor> Initialize(ParameterInput *pin, Opacity &opacity,
-                                            Scattering &scattering, EOS &eos) {
+                                            Scattering &scattering, EOS &eos,
+                                            std::string block_name) {
   auto pkg = std::make_shared<StateDescriptor>("jaybenne");
 
   // Total number of particles
-  int num_particles = pin->GetInteger("jaybenne", "num_particles");
+  int num_particles = pin->GetInteger(block_name, "num_particles");
   pkg->AddParam<>("num_particles", num_particles);
-  Real dt = pin->GetOrAddReal("jaybenne", "dt", std::numeric_limits<Real>::max());
+  Real dt = pin->GetOrAddReal(block_name, "dt", std::numeric_limits<Real>::max());
   pkg->AddParam<>("dt", dt);
 
   // Minimum occupancy of swarm (measure of pool fragmentation) below which
   // defragmentation is triggered.
-  Real min_swarm_occupancy = pin->GetOrAddReal("jaybenne", "min_swarm_occupancy", 0.);
+  Real min_swarm_occupancy = pin->GetOrAddReal(block_name, "min_swarm_occupancy", 0.);
   PARTHENON_REQUIRE(min_swarm_occupancy >= 0 && min_swarm_occupancy < 1.0,
                     "Minimum allowable swarm occupancy must be >= 0 and less than 1");
   pkg->AddParam<>("min_swarm_occupancy", min_swarm_occupancy);
 
   // Frequency range
-  Real numin = pin->GetOrAddReal("jaybenne", "numin", std::numeric_limits<Real>::min());
+  Real numin = pin->GetOrAddReal(block_name, "numin", std::numeric_limits<Real>::min());
   pkg->AddParam<>("numin", numin);
-  Real numax = pin->GetOrAddReal("jaybenne", "numax", std::numeric_limits<Real>::max());
+  Real numax = pin->GetOrAddReal(block_name, "numax", std::numeric_limits<Real>::max());
   pkg->AddParam<>("numax", numax);
 
   // Physical constants
@@ -158,28 +159,28 @@ std::shared_ptr<StateDescriptor> Initialize(ParameterInput *pin, Opacity &opacit
   pkg->AddParam<>("stefan_boltzmann", units.sb);
 
   // RNG
-  bool unique_rank_seeds = pin->GetOrAddBoolean("jaybenne", "unique_rank_seeds", true);
+  bool unique_rank_seeds = pin->GetOrAddBoolean(block_name, "unique_rank_seeds", true);
   pkg->AddParam<>("unique_rank_seeds", unique_rank_seeds);
-  int seed = pin->GetOrAddInteger("jaybenne", "seed", 123);
+  int seed = pin->GetOrAddInteger(block_name, "seed", 123);
   pkg->AddParam<>("seed", unique_rank_seeds ? seed + Globals::my_rank : seed);
   RngPool rng_pool(seed);
   pkg->AddParam<>("rng_pool", rng_pool);
 
   // Transport numerics
   int max_transport_iterations =
-      pin->GetOrAddInteger("jaybenne", "max_transport_iterations", 10000);
+      pin->GetOrAddInteger(block_name, "max_transport_iterations", 10000);
   pkg->AddParam<>("max_transport_iterations", max_transport_iterations);
 
   // DDMC flag (0 = no DDMC)
-  bool use_ddmc = pin->GetOrAddBoolean("jaybenne", "use_ddmc", false);
+  bool use_ddmc = pin->GetOrAddBoolean(block_name, "use_ddmc", false);
   pkg->AddParam<>("use_ddmc", use_ddmc);
   // parse or use default DDMC threshold = 5
-  Real tau_ddmc = pin->GetOrAddReal("jaybenne", "tau_ddmc", 5.0);
+  Real tau_ddmc = pin->GetOrAddReal(block_name, "tau_ddmc", 5.0);
   pkg->AddParam<>("tau_ddmc", tau_ddmc);
 
   // Sourcing strategy
   SourceStrategy source_strategy;
-  std::string strategy = pin->GetOrAddString("jaybenne", "source_strategy", "uniform");
+  std::string strategy = pin->GetOrAddString(block_name, "source_strategy", "uniform");
   if (strategy == "uniform") {
     source_strategy = SourceStrategy::uniform;
   } else if (strategy == "energy") {
@@ -190,11 +191,11 @@ std::shared_ptr<StateDescriptor> Initialize(ParameterInput *pin, Opacity &opacit
   pkg->AddParam<>("source_strategy", source_strategy);
 
   // Whether to include emission physics
-  const bool do_emission = pin->GetOrAddBoolean("jaybenne", "do_emission", true);
+  const bool do_emission = pin->GetOrAddBoolean(block_name, "do_emission", true);
   pkg->AddParam<>("do_emission", do_emission);
 
   // Whether to feedback on fluid
-  const bool do_feedback = pin->GetOrAddBoolean("jaybenne", "do_feedback", true);
+  const bool do_feedback = pin->GetOrAddBoolean(block_name, "do_feedback", true);
   pkg->AddParam<>("do_feedback", do_feedback);
 
   // Equation of state model

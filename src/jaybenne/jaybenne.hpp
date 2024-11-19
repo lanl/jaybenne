@@ -47,9 +47,9 @@ using namespace parthenon::package::prelude;
 
 namespace jaybenne {
 
-std::shared_ptr<parthenon::StateDescriptor> Initialize(parthenon::ParameterInput *pin,
-                                                       Opacity &opacity,
-                                                       Scattering &scattering, EOS &eos);
+std::shared_ptr<parthenon::StateDescriptor>
+Initialize(parthenon::ParameterInput *pin, Opacity &opacity, Scattering &scattering,
+           EOS &eos, std::string block_name = "jaybenne");
 
 // Model enums
 enum class SourceStrategy { uniform, energy };
