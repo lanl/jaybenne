@@ -125,7 +125,7 @@ elif [[ $PARTITION == "darwin-a100" ]]; then
     module list
     echo "...setup SUCCEEDED"
 elif [[ $PARTITION == "venado-gh" ]]; then
-module load PrgEnv-gnu
+    module load PrgEnv-gnu
     module load cray-mpich
     #module load cray-hdf5-parallel # Compiler wrappers fail to find hdf5.h 2024/11/8
     export HDF5_ROOT=/opt/cray/pe/hdf5-parallel/1.14.3.1/gnu/12.3
