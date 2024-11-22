@@ -260,6 +260,8 @@ TaskStatus UpdateDerivedTransportFields(MeshData<Real> *md, const Real dt) {
   namespace fj = field::jaybenne;
   namespace fjh = field::jaybenne::host;
 
+  Kokkos::Profiling::pushRegion("Jaybenne::Timestep");
+
   auto pm = md->GetParentPointer();
   auto &resolved_pkgs = pm->resolved_packages;
   auto &jbn = pm->packages.Get("jaybenne");
@@ -572,6 +574,8 @@ TaskStatus UpdateFluid(MeshData<Real> *md) {
         const Real delta = vmesh(b, fj::energy_delta(), k, j, i) / dv;
         ee += delta;
       });
+
+  Kokkos::Profiling::popRegion(); // End of Jaybenne timestep
 
   return TaskStatus::complete;
 }
