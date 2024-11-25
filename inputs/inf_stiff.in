@@ -47,16 +47,16 @@ numin = 1.e10
 numax = 1.e20
 do_emission = true
 do_feedback = false
-opacity_model = constant
-opacity_constant_value = 1000.0 # cm^2/g
-scattering_model = constant
-scattering_constant_value = 0.0 #1.0e5
 transport_model = zone_size
 tracking_algo = history # event
 source_strategy = uniform
 seed = 349856
 
 <mcblock>
+opacity_model = constant
+opacity_constant_value = 1000.0 # cm^2/g
+scattering_model = constant
+scattering_constant_value = 0.0 #1.0e5
 specific_heat = 1.0e7 # erg/K/g
 initial_density = 1.0 # g cm^-3
 initial_temperature = 1.0 # keV

@@ -79,6 +79,16 @@ TaskCollection RadiationStep(Mesh *pmesh, const Real t_start, const Real dt) {
 
   TaskCollection tc;
   TaskID none(0);
+
+  auto &timing_region0 = tc.AddRegion(1);
+  {
+    auto &tl = timing_region0[0];
+    tl.AddTask(none, []() {
+      Kokkos::Profiling::pushRegion("Jaybenne::Timestep");
+      return TaskStatus::complete;
+    });
+  }
+
   const int num_partitions = pmesh->DefaultNumPartitions();
   PARTHENON_REQUIRE(
       num_partitions == 1,
@@ -101,17 +111,24 @@ TaskCollection RadiationStep(Mesh *pmesh, const Real t_start, const Real dt) {
 
     // keep pushing particles until there are none left
     auto [itl, push] = tl.AddSublist(bcs, {1, max_transport_iterations});
+    auto time_start = itl.AddTask(none, []() {
+      Kokkos::Profiling::pushRegion("Jaybenne::TransportLoop");
+      return TaskStatus::complete;
+    });
     auto transport =
-        use_ddmc ? itl.AddTask(none, TransportPhotons_DDMC, base.get(), t_start, dt)
-                 : itl.AddTask(none, TransportPhotons, base.get(), t_start, dt);
+        use_ddmc ? itl.AddTask(time_start, TransportPhotons_DDMC, base.get(), t_start, dt)
+                 : itl.AddTask(time_start, TransportPhotons, base.get(), t_start, dt);
     auto reset_comms = itl.AddTask(transport, MeshResetCommunication, base.get());
     auto send = itl.AddTask(reset_comms, MeshSend, base.get());
     auto receive = itl.AddTask(transport | send, MeshReceive, base.get());
     auto sample_ddmc_bface =
         use_ddmc ? itl.AddTask(receive, SampleDDMCBlockFace, base.get()) : receive;
-    auto complete =
-        itl.AddTask(TQ::once_per_region | TQ::global_sync | TQ::completion,
-                    sample_ddmc_bface, CheckCompletion, base.get(), t_start + dt);
+    auto time_stop = itl.AddTask(sample_ddmc_bface, []() {
+      Kokkos::Profiling::popRegion(/*Jaybenne::TransportLoop*/);
+      return TaskStatus::complete;
+    });
+    auto complete = itl.AddTask(TQ::once_per_region | TQ::global_sync | TQ::completion,
+                                time_stop, CheckCompletion, base.get(), t_start + dt);
 
     // Update radiation fields
     auto eval_rad =
@@ -119,6 +136,15 @@ TaskCollection RadiationStep(Mesh *pmesh, const Real t_start, const Real dt) {
 
     // Update fluid fields
     auto update_fluid = tl.AddTask(eval_rad, jaybenne::UpdateFluid, base.get());
+  }
+
+  auto &timing_region1 = tc.AddRegion(1);
+  {
+    auto &tl = timing_region1[0];
+    tl.AddTask(none, []() {
+      Kokkos::Profiling::popRegion(/* Jaybenne::Timestep */);
+      return TaskStatus::complete;
+    });
   }
 
   return tc;
