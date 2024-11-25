@@ -77,6 +77,15 @@ TaskCollection RadiationStep(Mesh *pmesh, const Real t_start, const Real dt) {
   auto &ddmc_reg =
       pmesh->mesh_data.AddShallow("ddmc_reg", pmesh->mesh_data.Get(), ddmc_field_names);
 
+  auto &timing_region0 = tc.AddRegion(1);
+  {
+    auto &tl = timing_region0[0];
+    tl.AddTask(none, []() {
+      Kokkos::Profiling::pushRegion("Jaybenne::Timestep");
+      return TaskStatus::complete;
+    });
+  }
+
   TaskCollection tc;
   TaskID none(0);
   const int num_partitions = pmesh->DefaultNumPartitions();
@@ -119,6 +128,15 @@ TaskCollection RadiationStep(Mesh *pmesh, const Real t_start, const Real dt) {
 
     // Update fluid fields
     auto update_fluid = tl.AddTask(eval_rad, jaybenne::UpdateFluid, base.get());
+  }
+
+  auto &timing_region1 = tc.AddRegion(1);
+  {
+    auto &tl = timing_region1[0];
+    tl.AddTask(none, []() {
+      Kokkos::Profiling::popRegion(/* Jaybenne::Timestep */);
+      return TaskStatus::complete;
+    });
   }
 
   return tc;
@@ -259,8 +277,6 @@ Real EstimateTimestepMesh(MeshData<Real> *md) {
 TaskStatus UpdateDerivedTransportFields(MeshData<Real> *md, const Real dt) {
   namespace fj = field::jaybenne;
   namespace fjh = field::jaybenne::host;
-
-  Kokkos::Profiling::pushRegion("Jaybenne::Timestep");
 
   auto pm = md->GetParentPointer();
   auto &resolved_pkgs = pm->resolved_packages;
@@ -574,8 +590,6 @@ TaskStatus UpdateFluid(MeshData<Real> *md) {
         const Real delta = vmesh(b, fj::energy_delta(), k, j, i) / dv;
         ee += delta;
       });
-
-  Kokkos::Profiling::popRegion(); // End of Jaybenne timestep
 
   return TaskStatus::complete;
 }
