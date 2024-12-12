@@ -85,9 +85,11 @@ std::shared_ptr<StateDescriptor> Initialize(ParameterInput *pin) {
   const Real time_scale = pin->GetOrAddReal("mcblock", "time_scale", 1.);
   const Real mass_scale = pin->GetOrAddReal("mcblock", "mass_scale", 1.);
   const Real length_scale = pin->GetOrAddReal("mcblock", "length_scale", 1.);
+  const Real temperature_scale = pin->GetOrAddReal("mcblock", "temperature_scale", 1.);
   pkg->AddParam<>("time_scale", time_scale);
   pkg->AddParam<>("mass_scale", mass_scale);
   pkg->AddParam<>("length_scale", length_scale);
+  pkg->AddParam<>("temperature_scale", temperature_scale);
 
   // Absorption opacity model
   OpacityModel opacity_model;
@@ -96,17 +98,19 @@ std::shared_ptr<StateDescriptor> Initialize(ParameterInput *pin) {
   if (opacity_model_name == "none") {
     opacity_model = OpacityModel::none;
     opacity = singularity::photons::NonCGSUnits<singularity::photons::Gray>(
-        singularity::photons::Gray(0.0), time_scale, mass_scale, length_scale, 1.);
+        singularity::photons::Gray(0.0), time_scale, mass_scale, length_scale,
+        temperature_scale);
   } else if (opacity_model_name == "constant") {
     opacity_model = OpacityModel::constant;
     Real kappa = pin->GetReal("mcblock", "opacity_constant_value");
-    // opacity = singularity::photons::Gray(kappa);
     opacity = singularity::photons::NonCGSUnits<singularity::photons::Gray>(
-        singularity::photons::Gray(kappa), time_scale, mass_scale, length_scale, 1.);
+        singularity::photons::Gray(kappa), time_scale, mass_scale, length_scale,
+        temperature_scale);
   } else if (opacity_model_name == "ep_bremss") {
     opacity_model = OpacityModel::epbremss;
     opacity = singularity::photons::NonCGSUnits<singularity::photons::EPBremss>(
-        singularity::photons::EPBremss(), time_scale, mass_scale, length_scale, 1.);
+        singularity::photons::EPBremss(), time_scale, mass_scale, length_scale,
+        temperature_scale);
   } else {
     // nothing else supported for now
     PARTHENON_FAIL("Only none or constant opacity models supported!");
@@ -126,14 +130,14 @@ std::shared_ptr<StateDescriptor> Initialize(ParameterInput *pin) {
   if (scattering_model_name == "none") {
     scattering_model = ScatteringModel::none;
     scattering = singularity::photons::NonCGSUnits<singularity::photons::GrayS>(
-        singularity::photons::GrayS(0.0, apm), time_scale, mass_scale, length_scale, 1.);
+        singularity::photons::GrayS(0.0, apm), time_scale, mass_scale, length_scale,
+        temperature_scale);
   } else if (scattering_model_name == "constant") {
-    // TODO(BRR): parse 2nd argument: average particle mass?
     scattering_model = ScatteringModel::constant;
     Real kappa_s = pin->GetReal("mcblock", "scattering_constant_value");
     scattering = singularity::photons::NonCGSUnits<singularity::photons::GrayS>(
         singularity::photons::GrayS(kappa_s, apm), time_scale, mass_scale, length_scale,
-        1.);
+        temperature_scale);
   } else {
     PARTHENON_FAIL("Only none or constant scattering models supported!");
   }
