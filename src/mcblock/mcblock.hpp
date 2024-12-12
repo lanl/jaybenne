@@ -29,7 +29,7 @@ namespace mcblock {
 
 // Model enums
 enum class InitialRadiation { none, thermal };
-enum class OpacityModel { none, constant };
+enum class OpacityModel { none, constant, epbremss };
 enum class ScatteringModel { none, constant };
 
 std::shared_ptr<StateDescriptor> Initialize(ParameterInput *pin);

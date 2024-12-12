@@ -295,6 +295,5 @@ function build_jaybenne {
     make -j
     make_status=$?
 
-    echo "${ABS_BUILD_DIR}"
     return $make_status
 }

@@ -20,12 +20,14 @@
 namespace mcblock {
 
 // Reduced absorption variant just for jaybenne
-using Opacity = singularity::photons::impl::Variant<singularity::photons::Gray,
-                                                    singularity::photons::EPBremss>;
+using Opacity = singularity::photons::impl::Variant<
+    singularity::photons::NonCGSUnits<singularity::photons::Gray>,
+    singularity::photons::NonCGSUnits<singularity::photons::EPBremss>>;
 
 // Reduced scattering variant just for jaybenne
-using Scattering = singularity::photons::impl::S_Variant<singularity::photons::GrayS,
-                                                         singularity::photons::ThomsonS>;
+using Scattering = singularity::photons::impl::S_Variant<
+    singularity::photons::NonCGSUnitsS<singularity::photons::GrayS>,
+    singularity::photons::NonCGSUnitsS<singularity::photons::ThomsonS>>;
 
 } // namespace mcblock
 
