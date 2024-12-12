@@ -129,13 +129,13 @@ std::shared_ptr<StateDescriptor> Initialize(ParameterInput *pin) {
       pin->GetOrAddString("mcblock", "scattering_model", "none");
   if (scattering_model_name == "none") {
     scattering_model = ScatteringModel::none;
-    scattering = singularity::photons::NonCGSUnits<singularity::photons::GrayS>(
+    scattering = singularity::photons::NonCGSUnitsS<singularity::photons::GrayS>(
         singularity::photons::GrayS(0.0, apm), time_scale, mass_scale, length_scale,
         temperature_scale);
   } else if (scattering_model_name == "constant") {
     scattering_model = ScatteringModel::constant;
     Real kappa_s = pin->GetReal("mcblock", "scattering_constant_value");
-    scattering = singularity::photons::NonCGSUnits<singularity::photons::GrayS>(
+    scattering = singularity::photons::NonCGSUnitsS<singularity::photons::GrayS>(
         singularity::photons::GrayS(kappa_s, apm), time_scale, mass_scale, length_scale,
         temperature_scale);
   } else {
