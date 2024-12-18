@@ -22,7 +22,7 @@ namespace jaybenne {
 //! \fn  TaskStatus SourcePhotons
 //! \brief Create photons, either during initialization or during a timestep.
 //! TODO(BRR) modify interface so we don't need t_start, dt for initialization
-template <typename T, SourceType ST>
+template <typename T, SourceType ST, FrequencyType FT>
 TaskStatus SourcePhotons(T *md, const Real t_start, const Real dt) {
   namespace fj = field::jaybenne;
   namespace fjh = field::jaybenne::host;
@@ -31,8 +31,21 @@ TaskStatus SourcePhotons(T *md, const Real t_start, const Real dt) {
   auto pm = md->GetParentPointer();
   auto &resolved_pkgs = pm->resolved_packages;
   auto &jb_pkg = pm->packages.Get("jaybenne");
+  const Real h = jb_pkg->template Param<Real>("planck_constant");
   auto &eos = jb_pkg->template Param<EOS>("eos_d");
-  auto &opacity = jb_pkg->template Param<Opacity>("opacity_d");
+  const MeanOpacity *mopacity = nullptr;
+  const Opacity *opacity = nullptr;
+  int n_nubins = -1;
+  Real numin = -1.;
+  Real numax = -1.;
+  if constexpr (FT == FrequencyType::gray) {
+    mopacity = &(jb_pkg->template Param<MeanOpacity>("mopacity_d"));
+  } else if constexpr (FT == FrequencyType::multigroup) {
+    opacity = &(jb_pkg->template Param<Opacity>("opacity_d"));
+    n_nubins = jb_pkg->template Param<int>("n_nubins");
+    numin = jb_pkg->template Param<Real>("numin");
+    numax = jb_pkg->template Param<Real>("numax");
+  }
   auto &do_emission = jb_pkg->template Param<bool>("do_emission");
   auto &source_strategy = jb_pkg->template Param<SourceStrategy>("source_strategy");
   PARTHENON_REQUIRE(source_strategy != SourceStrategy::energy,
@@ -51,7 +64,8 @@ TaskStatus SourcePhotons(T *md, const Real t_start, const Real dt) {
   // Create pack
   static auto desc =
       MakePackDescriptor<fjh::density, fjh::sie, fj::fleck_factor, fj::source_ew_per_cell,
-                         fj::source_num_per_cell, fj::energy_delta>(resolved_pkgs.get());
+                         fj::source_num_per_cell, fj::emission_cdf, fj::energy_delta>(
+          resolved_pkgs.get());
   auto vmesh = desc.GetPack(md);
 
   // Indexing and dimensionality
@@ -87,12 +101,37 @@ TaskStatus SourcePhotons(T *md, const Real t_start, const Real dt) {
               [[maybe_unused]] const Real &sbd = sb;
               [[maybe_unused]] const Real &vvd = vv;
               [[maybe_unused]] const Real &dtd = dt;
-              [[maybe_unused]] auto &opac = opacity;
+              [[maybe_unused]] auto *opac = opacity;
+              [[maybe_unused]] auto *mopac = mopacity;
+              [[maybe_unused]] const auto numind = numin;
+              [[maybe_unused]] const auto numaxd = numax;
+              [[maybe_unused]] const auto n_nubinsd = n_nubins;
               Real erad = 0.0;
               if constexpr (ST == SourceType::thermal) {
                 erad = (4.0 * sbd / vvd) * std::pow(temp, 4.0) * dv;
               } else if constexpr (ST == SourceType::emission) {
-                const Real emis = opac.Emissivity(rho, temp);
+                Real emis = -1.;
+                if constexpr (FT == FrequencyType::gray) {
+                  emis = opac->Emissivity(rho, temp);
+                } else if constexpr (FT == FrequencyType::multigroup) {
+                  // Construct emission CDF
+                  const Real dlnu = (std::log(numaxd) - std::log(numind)) / n_nubinsd;
+                  vmesh(b, fj::emission_cdf(0), k, j, i) = opac->EmissivityPerNu(
+                      rho, temp, std::exp(std::log(numind) + 0.5 * dlnu));
+                  for (int n = 1; n < n_nubinsd; n++) {
+                    const Real nu = std::exp(std::log(numind) + (n + 0.5) * dlnu);
+                    vmesh(b, fj::emission_cdf(n), k, j, i) =
+                        opac->EmissivityPerNu(rho, temp, nu) +
+                        vmesh(b, fj::emission_cdf(n - 1), k, j, i);
+                  }
+                  for (int n = 0; n < n_nubinsd; n++) {
+                    // Get total emissivity
+                    emis += vmesh(b, fj::emission_cdf(n), k, j, i);
+                    // Normalize emission CDF
+                    vmesh(b, fj::emission_cdf(n), k, j, i) /=
+                        vmesh(b, fj::emission_cdf(n_nubins - 1), k, j, i);
+                  }
+                }
                 erad = vmesh(b, fj::fleck_factor(), k, j, i) * emis * dv * dtd;
               }
               // Set source_num_per_cell
@@ -156,6 +195,10 @@ TaskStatus SourcePhotons(T *md, const Real t_start, const Real dt) {
         auto rng_gen = rng_pool.get_state();
         [[maybe_unused]] const Real &dtd = dt;
         [[maybe_unused]] const Real &t_startd = t_start;
+        [[maybe_unused]] const Real hd = h;
+        [[maybe_unused]] const Real numaxd = numax;
+        [[maybe_unused]] const Real numind = numin;
+        [[maybe_unused]] const int n_nubinsd = n_nubins;
 
         // Starting index and length of particles in this cell
         const int &pstart_idx = prefix_sum(b, cell_idx_1d);
@@ -189,8 +232,23 @@ TaskStatus SourcePhotons(T *md, const Real t_start, const Real dt) {
           const Real &rho = vmesh(b, fjh::density(), k, j, i);
           const Real &sie = vmesh(b, fjh::sie(), k, j, i);
           const Real temp = eos.TemperatureFromDensityInternalEnergy(rho, sie);
-          ppack_r(b, ph::energy(), n) = sample_Planck_energy(rng_gen, sb, temp);
-          ppack_r(b, ph::weight(), n) = vmesh(b, fj::source_ew_per_cell(), k, j, i);
+          if constexpr (FT == FrequencyType::gray) {
+            ppack_r(b, ph::energy(), n) = sample_Planck_energy(rng_gen, sb, temp);
+          } else if constexpr (FT == FrequencyType::multigroup) {
+            // Sample energy from CDF
+            const Real rand = rng_gen.drand();
+            int n;
+            for (n = 0; n < n_nubinsd; n++) {
+              if (vmesh(b, fj::emission_cdf(n), k, j, i) >= rand) {
+                break;
+              }
+            }
+            const Real dlnu = (std::log(numaxd) - std::log(numind)) / n_nubinsd;
+            const Real nu = std::exp(std::log(numind) + (n + 0.5) * dlnu);
+            ppack_r(b, ph::energy(), n) = hd * nu;
+          }
+          ppack_r(b, ph::weight(), n) =
+              vmesh(b, fj::source_ew_per_cell(), k, j, i) / ppack_r(b, ph::energy(), n);
 
           if constexpr (ST == SourceType::emission) {
             dejbn -= ppack_r(b, ph::weight(), n);
@@ -212,9 +270,22 @@ TaskStatus SourcePhotons(T *md, const Real t_start, const Real dt) {
 typedef MeshBlockData<Real> BD;
 typedef MeshData<Real> D;
 typedef SourceType ST;
-template TaskStatus SourcePhotons<BD, ST::thermal>(BD *md, const Real t0, const Real dt);
-template TaskStatus SourcePhotons<BD, ST::emission>(BD *md, const Real t0, const Real dt);
-template TaskStatus SourcePhotons<D, ST::thermal>(D *md, const Real t0, const Real dt);
-template TaskStatus SourcePhotons<D, ST::emission>(D *md, const Real t0, const Real dt);
+typedef FrequencyType FT;
+template TaskStatus SourcePhotons<BD, ST::thermal, FT::gray>(BD *md, const Real t0,
+                                                             const Real dt);
+template TaskStatus SourcePhotons<BD, ST::emission, FT::gray>(BD *md, const Real t0,
+                                                              const Real dt);
+template TaskStatus SourcePhotons<D, ST::thermal, FT::gray>(D *md, const Real t0,
+                                                            const Real dt);
+template TaskStatus SourcePhotons<D, ST::emission, FT::gray>(D *md, const Real t0,
+                                                             const Real dt);
+template TaskStatus SourcePhotons<BD, ST::thermal, FT::multigroup>(BD *md, const Real t0,
+                                                                   const Real dt);
+template TaskStatus SourcePhotons<BD, ST::emission, FT::multigroup>(BD *md, const Real t0,
+                                                                    const Real dt);
+template TaskStatus SourcePhotons<D, ST::thermal, FT::multigroup>(D *md, const Real t0,
+                                                                  const Real dt);
+template TaskStatus SourcePhotons<D, ST::emission, FT::multigroup>(D *md, const Real t0,
+                                                                   const Real dt);
 
 } // namespace jaybenne

@@ -71,6 +71,7 @@ TaskCollection RadiationStep(Mesh *pmesh, const Real t_start, const Real dt) {
   auto &jb_pkg = pmesh->packages.Get("jaybenne");
   const auto &max_transport_iterations = jb_pkg->Param<int>("max_transport_iterations");
   const bool &use_ddmc = jb_pkg->Param<bool>("use_ddmc");
+  const auto &fd = jb_pkg->Param<FrequencyType>("frequency_type");
 
   // MeshData subsets
   auto ddmc_field_names = std::vector<std::string>{fj::ddmc_face_prob::name()};
@@ -102,9 +103,20 @@ TaskCollection RadiationStep(Mesh *pmesh, const Real t_start, const Real dt) {
 
     // prepare for iterative transport loop
     auto derived = tl.AddTask(none, UpdateDerivedTransportFields, base.get(), dt);
-    auto source = tl.AddTask(
-        derived, jaybenne::SourcePhotons<MeshData<Real>, jaybenne::SourceType::emission>,
-        base.get(), t_start, dt);
+    TaskID source = derived;
+    if (fd == FrequencyType::gray) {
+      auto source = tl.AddTask(
+          derived,
+          jaybenne::SourcePhotons<MeshData<Real>, jaybenne::SourceType::emission,
+                                  FrequencyType::gray>,
+          base.get(), t_start, dt);
+    } else if (fd == FrequencyType::multigroup) {
+      auto source = tl.AddTask(
+          derived,
+          jaybenne::SourcePhotons<MeshData<Real>, jaybenne::SourceType::emission,
+                                  FrequencyType::multigroup>,
+          base.get(), t_start, dt);
+    }
     auto bcs = use_ddmc ? parthenon::AddBoundaryExchangeTasks(source, tl, md_ddmc,
                                                               pmesh->multilevel)
                         : source;
@@ -177,6 +189,7 @@ Initialize_impl(ParameterInput *pin, EOS &eos,
   // const auto units = opacity.GetRuntimePhysicalConstants();
   pkg->AddParam<>("speed_of_light", units.c);
   pkg->AddParam<>("stefan_boltzmann", units.sb);
+  pkg->AddParam<>("planck_constant", units.h);
 
   // RNG
   bool unique_rank_seeds = pin->GetOrAddBoolean("jaybenne", "unique_rank_seeds", true);
@@ -265,7 +278,7 @@ std::shared_ptr<StateDescriptor> Initialize(ParameterInput *pin, MeanOpacity &mo
 
   auto pkg = Initialize_impl(pin, eos, units);
 
-  pkg->AddParam<>("frequency_discretization", FrequencyDiscretization::multigroup);
+  pkg->AddParam<>("frequency_type", FrequencyType::multigroup);
 
   // Opacity model
   pkg->AddParam<>("mopacity_d", mopacity.GetOnDevice());
@@ -287,13 +300,20 @@ std::shared_ptr<StateDescriptor> Initialize(ParameterInput *pin, Opacity &opacit
 
   auto pkg = Initialize_impl(pin, eos, units);
 
-  // Frequency range
-  Real numin = pin->GetOrAddReal("jaybenne", "numin", std::numeric_limits<Real>::min());
-  pkg->AddParam<>("numin", numin);
-  Real numax = pin->GetOrAddReal("jaybenne", "numax", std::numeric_limits<Real>::max());
-  pkg->AddParam<>("numax", numax);
+  // Frequency discretization
+  auto time = units.time;
+  Real numin = pin->GetReal("jaybenne", "numin"); // in Hz
+  pkg->AddParam<>("numin", numin * time);         // in code units
+  Real numax = pin->GetReal("jaybenne", "numax"); // in Hz
+  pkg->AddParam<>("numax", numax * time);         // in code units
+  int n_nubins = pin->GetInteger("jaybenne", "n_nubins");
+  pkg->AddParam<>("n_nubins", n_nubins);
 
-  pkg->AddParam<>("frequency_discretization", FrequencyDiscretization::multigroup);
+  pkg->AddParam<>("frequency_type", FrequencyType::multigroup);
+
+  // Emission CDF
+  Metadata m_onecopy({Metadata::Cell, Metadata::OneCopy}, std::vector<int>({n_nubins}));
+  pkg->AddField(field::jaybenne::emission_cdf::name(), m_onecopy);
 
   // Opacity model
   pkg->AddParam<>("opacity_d", opacity.GetOnDevice());
@@ -595,9 +615,17 @@ TaskStatus EvaluateRadiationEnergy(T *md) {
 //! \brief Initialize radiation based on material temperature and either thermal or
 //!        zero initial radiation.
 void InitializeRadiation(MeshBlockData<Real> *mbd, const bool is_thermal) {
+  auto &jb_pkg = mbd->GetBlockPointer()->packages.Get("jaybenne");
+  const auto &fd = jb_pkg->Param<FrequencyType>("frequency_type");
+
   if (is_thermal) {
-    jaybenne::SourcePhotons<MeshBlockData<Real>, jaybenne::SourceType::thermal>(mbd, 0.0,
-                                                                                0.0);
+    if (fd == FrequencyType::gray) {
+      jaybenne::SourcePhotons<MeshBlockData<Real>, jaybenne::SourceType::thermal,
+                              FrequencyType::gray>(mbd, 0.0, 0.0);
+    } else if (fd == FrequencyType::multigroup) {
+      jaybenne::SourcePhotons<MeshBlockData<Real>, jaybenne::SourceType::thermal,
+                              FrequencyType::multigroup>(mbd, 0.0, 0.0);
+    }
   }
 
   // Call this so radiation field variables are properly initialized for outputs

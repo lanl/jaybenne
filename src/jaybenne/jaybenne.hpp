@@ -58,14 +58,14 @@ std::shared_ptr<parthenon::StateDescriptor> Initialize(parthenon::ParameterInput
 // Model enums
 enum class SourceStrategy { uniform, energy };
 enum class SourceType { thermal, emission };
-enum class FrequencyDiscretization { gray, multigroup };
+enum class FrequencyType { gray, multigroup };
 
 // Tasks
 TaskStatus TransportPhotons(MeshData<Real> *md, const Real t_start, const Real dt);
 TaskStatus TransportPhotons_DDMC(MeshData<Real> *md, const Real t_start, const Real dt);
 TaskStatus SampleDDMCBlockFace(MeshData<Real> *md);
 TaskStatus CheckCompletion(MeshData<Real> *md, const Real t_end);
-template <typename T, SourceType ST>
+template <typename T, SourceType ST, FrequencyType FT>
 TaskStatus SourcePhotons(T *md, const Real t_start, const Real dt);
 TaskStatus DefragParticles(MeshBlock *pmb);
 TaskStatus UpdateDerivedTransportFields(MeshData<Real> *md, const Real dt);
