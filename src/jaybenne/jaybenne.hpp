@@ -50,10 +50,15 @@ namespace jaybenne {
 std::shared_ptr<parthenon::StateDescriptor> Initialize(parthenon::ParameterInput *pin,
                                                        Opacity &opacity,
                                                        Scattering &scattering, EOS &eos);
+std::shared_ptr<parthenon::StateDescriptor> Initialize(parthenon::ParameterInput *pin,
+                                                       MeanOpacity &mopacity,
+                                                       MeanScattering &mscattering,
+                                                       EOS &eos);
 
 // Model enums
 enum class SourceStrategy { uniform, energy };
 enum class SourceType { thermal, emission };
+enum class FrequencyDiscretization { gray, multigroup };
 
 // Tasks
 TaskStatus TransportPhotons(MeshData<Real> *md, const Real t_start, const Real dt);

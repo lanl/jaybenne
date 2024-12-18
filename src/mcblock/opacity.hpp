@@ -14,6 +14,8 @@
 #define MCBLOCK_OPACITY_HPP_
 
 // Singularity-opac includes
+#include <singularity-opac/photons/mean_opacity_photons.hpp>
+#include <singularity-opac/photons/mean_s_opacity_photons.hpp>
 #include <singularity-opac/photons/opac_photons.hpp>
 #include <singularity-opac/photons/s_opac_photons.hpp>
 
@@ -24,10 +26,14 @@ using Opacity = singularity::photons::impl::Variant<
     singularity::photons::NonCGSUnits<singularity::photons::Gray>,
     singularity::photons::NonCGSUnits<singularity::photons::EPBremss>>;
 
+using MeanOpacity = singularity::photons::MeanOpacity;
+
 // Reduced scattering variant just for jaybenne
 using Scattering = singularity::photons::impl::S_Variant<
     singularity::photons::NonCGSUnitsS<singularity::photons::GrayS>,
     singularity::photons::NonCGSUnitsS<singularity::photons::ThomsonS>>;
+
+using MeanScattering = singularity::photons::MeanSOpacity;
 
 } // namespace mcblock
 

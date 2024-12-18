@@ -151,12 +151,11 @@ TaskCollection RadiationStep(Mesh *pmesh, const Real t_start, const Real dt) {
 }
 
 //----------------------------------------------------------------------------------------
-//! \fn  StateDescriptor Jaybenne::Initialize
+//! \fn  StateDescriptor Jaybenne::Initialize_impl
 //! \brief Initialize the Jaybenne physics package. This function defines and sets the
 //! parameters associated with Jaybenne, and enrolls the data variables associated with
-//! this physics package.
-std::shared_ptr<StateDescriptor> Initialize(ParameterInput *pin, Opacity &opacity,
-                                            Scattering &scattering, EOS &eos) {
+//! this physics package, for everything not related to frequency discretization.
+std::shared_ptr<StateDescriptor> Initialize_impl(ParameterInput *pin, EOS &eos) {
   auto pkg = std::make_shared<StateDescriptor>("jaybenne");
 
   // Total number of particles
@@ -171,12 +170,6 @@ std::shared_ptr<StateDescriptor> Initialize(ParameterInput *pin, Opacity &opacit
   PARTHENON_REQUIRE(min_swarm_occupancy >= 0 && min_swarm_occupancy < 1.0,
                     "Minimum allowable swarm occupancy must be >= 0 and less than 1");
   pkg->AddParam<>("min_swarm_occupancy", min_swarm_occupancy);
-
-  // Frequency range
-  Real numin = pin->GetOrAddReal("jaybenne", "numin", std::numeric_limits<Real>::min());
-  pkg->AddParam<>("numin", numin);
-  Real numax = pin->GetOrAddReal("jaybenne", "numax", std::numeric_limits<Real>::max());
-  pkg->AddParam<>("numax", numax);
 
   // Physical constants
   const auto units = opacity.GetRuntimePhysicalConstants();
@@ -226,12 +219,6 @@ std::shared_ptr<StateDescriptor> Initialize(ParameterInput *pin, Opacity &opacit
   // Equation of state model
   pkg->AddParam<>("eos_d", eos.GetOnDevice());
 
-  // Opacity model
-  pkg->AddParam<>("opacity_d", opacity.GetOnDevice());
-
-  // Scattering model
-  pkg->AddParam<>("scattering_d", scattering.GetOnDevice());
-
   // Swarm and swarm variables
   Metadata swarm_metadata({Metadata::Provides, Metadata::None});
   pkg->AddSwarm(photons_swarm_name, swarm_metadata);
@@ -261,6 +248,53 @@ std::shared_ptr<StateDescriptor> Initialize(ParameterInput *pin, Opacity &opacit
 
   // Radiation timestep
   pkg->EstimateTimestepMesh = EstimateTimestepMesh;
+
+  return pkg;
+}
+
+//----------------------------------------------------------------------------------------
+//! \fn  StateDescriptor Jaybenne::Initialize
+//! \brief Initialize the Jaybenne physics package. This function defines and sets the
+//! parameters associated with Jaybenne, and enrolls the data variables associated with
+//! this physics package, specific to the gray frequency discretization.
+std::shared_ptr<StateDescriptor> Initialize(ParameterInput *pin, MeanOpacity &mopacity,
+                                            MeanScattering &mscattering, EOS &eos) {
+  auto pkg = Initialize_impl(pin, eos);
+
+  pkg->AddParam<>("frequency_discretization", FrequencyDiscretization::multigroup);
+
+  // Opacity model
+  pkg->AddParam<>("mopacity_d", mopacity.GetOnDevice());
+
+  // Scattering model
+  pkg->AddParam<>("mscattering_d", mscattering.GetOnDevice());
+
+  return pkg;
+}
+
+//----------------------------------------------------------------------------------------
+//! \fn  StateDescriptor Jaybenne::Initialize
+//! \brief Initialize the Jaybenne physics package. This function defines and sets the
+//! parameters associated with Jaybenne, and enrolls the data variables associated with
+//! this physics package, specific to the multigroup frequency discretization.
+std::shared_ptr<StateDescriptor> Initialize(ParameterInput *pin, Opacity &opacity,
+                                            Scattering &scattering, EOS &eos) {
+
+  auto pkg = Initialize_impl(pin, eos);
+
+  // Frequency range
+  Real numin = pin->GetOrAddReal("jaybenne", "numin", std::numeric_limits<Real>::min());
+  pkg->AddParam<>("numin", numin);
+  Real numax = pin->GetOrAddReal("jaybenne", "numax", std::numeric_limits<Real>::max());
+  pkg->AddParam<>("numax", numax);
+
+  pkg->AddParam<>("frequency_discretization", FrequencyDiscretization::multigroup);
+
+  // Opacity model
+  pkg->AddParam<>("opacity_d", opacity.GetOnDevice());
+
+  // Scattering model
+  pkg->AddParam<>("scattering_d", scattering.GetOnDevice());
 
   return pkg;
 }
