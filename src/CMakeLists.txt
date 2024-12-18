@@ -31,6 +31,12 @@ if(JAYBENNE_STANDALONE_MODE)
   set(JAYBENNE_SCATTERING_OPACITY_TYPE
       "mcblock::Scattering"
       CACHE STRING "Namespace for scattering opacity Singularity type" FORCE)
+  set(JAYBENNE_ABSORPTION_MEAN_OPACITY_TYPE
+      "mcblock::MeanOpacity"
+      CACHE STRING "Namespace for absorption mean opacity Singularity type" FORCE)
+  set(JAYBENNE_SCATTERING_MEAN_OPACITY_TYPE
+      "mcblock::MeanScattering"
+      CACHE STRING "Namespace for scattering mean opacity Singularity type" FORCE)
   set(JAYBENNE_HOST_VARIABLE_HEADER
       "../mcblock/mcblock_variables.hpp"
       CACHE STRING "Path to host code variables header file" FORCE)

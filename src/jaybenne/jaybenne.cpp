@@ -155,7 +155,9 @@ TaskCollection RadiationStep(Mesh *pmesh, const Real t_start, const Real dt) {
 //! \brief Initialize the Jaybenne physics package. This function defines and sets the
 //! parameters associated with Jaybenne, and enrolls the data variables associated with
 //! this physics package, for everything not related to frequency discretization.
-std::shared_ptr<StateDescriptor> Initialize_impl(ParameterInput *pin, EOS &eos) {
+std::shared_ptr<StateDescriptor>
+Initialize_impl(ParameterInput *pin, EOS &eos,
+                singularity::RuntimePhysicalConstants units) {
   auto pkg = std::make_shared<StateDescriptor>("jaybenne");
 
   // Total number of particles
@@ -172,7 +174,7 @@ std::shared_ptr<StateDescriptor> Initialize_impl(ParameterInput *pin, EOS &eos) 
   pkg->AddParam<>("min_swarm_occupancy", min_swarm_occupancy);
 
   // Physical constants
-  const auto units = opacity.GetRuntimePhysicalConstants();
+  // const auto units = opacity.GetRuntimePhysicalConstants();
   pkg->AddParam<>("speed_of_light", units.c);
   pkg->AddParam<>("stefan_boltzmann", units.sb);
 
@@ -259,7 +261,9 @@ std::shared_ptr<StateDescriptor> Initialize_impl(ParameterInput *pin, EOS &eos) 
 //! this physics package, specific to the gray frequency discretization.
 std::shared_ptr<StateDescriptor> Initialize(ParameterInput *pin, MeanOpacity &mopacity,
                                             MeanScattering &mscattering, EOS &eos) {
-  auto pkg = Initialize_impl(pin, eos);
+  const auto units = mopacity.GetRuntimePhysicalConstants();
+
+  auto pkg = Initialize_impl(pin, eos, units);
 
   pkg->AddParam<>("frequency_discretization", FrequencyDiscretization::multigroup);
 
@@ -279,8 +283,9 @@ std::shared_ptr<StateDescriptor> Initialize(ParameterInput *pin, MeanOpacity &mo
 //! this physics package, specific to the multigroup frequency discretization.
 std::shared_ptr<StateDescriptor> Initialize(ParameterInput *pin, Opacity &opacity,
                                             Scattering &scattering, EOS &eos) {
+  const auto units = opacity.GetRuntimePhysicalConstants();
 
-  auto pkg = Initialize_impl(pin, eos);
+  auto pkg = Initialize_impl(pin, eos, units);
 
   // Frequency range
   Real numin = pin->GetOrAddReal("jaybenne", "numin", std::numeric_limits<Real>::min());
