@@ -61,7 +61,9 @@ enum class SourceType { thermal, emission };
 enum class FrequencyType { gray, multigroup };
 
 // Tasks
+template <FrequencyType FT>
 TaskStatus TransportPhotons(MeshData<Real> *md, const Real t_start, const Real dt);
+template <FrequencyType FT>
 TaskStatus TransportPhotons_DDMC(MeshData<Real> *md, const Real t_start, const Real dt);
 TaskStatus SampleDDMCBlockFace(MeshData<Real> *md);
 TaskStatus CheckCompletion(MeshData<Real> *md, const Real t_end);

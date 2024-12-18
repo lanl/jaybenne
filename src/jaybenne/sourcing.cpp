@@ -124,12 +124,13 @@ TaskStatus SourcePhotons(T *md, const Real t_start, const Real dt) {
                         opac->EmissivityPerNu(rho, temp, nu) +
                         vmesh(b, fj::emission_cdf(n - 1), k, j, i);
                   }
+                  emis = 0.;
                   for (int n = 0; n < n_nubinsd; n++) {
                     // Get total emissivity
                     emis += vmesh(b, fj::emission_cdf(n), k, j, i);
                     // Normalize emission CDF
                     vmesh(b, fj::emission_cdf(n), k, j, i) /=
-                        vmesh(b, fj::emission_cdf(n_nubins - 1), k, j, i);
+                        vmesh(b, fj::emission_cdf(n_nubinsd - 1), k, j, i);
                   }
                 }
                 erad = vmesh(b, fj::fleck_factor(), k, j, i) * emis * dv * dtd;

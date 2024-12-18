@@ -103,7 +103,7 @@ TaskCollection RadiationStep(Mesh *pmesh, const Real t_start, const Real dt) {
 
     // prepare for iterative transport loop
     auto derived = tl.AddTask(none, UpdateDerivedTransportFields, base.get(), dt);
-    TaskID source = derived;
+    auto source = derived;
     if (fd == FrequencyType::gray) {
       auto source = tl.AddTask(
           derived,
@@ -127,9 +127,21 @@ TaskCollection RadiationStep(Mesh *pmesh, const Real t_start, const Real dt) {
       Kokkos::Profiling::pushRegion("Jaybenne::TransportLoop");
       return TaskStatus::complete;
     });
-    auto transport =
-        use_ddmc ? itl.AddTask(time_start, TransportPhotons_DDMC, base.get(), t_start, dt)
-                 : itl.AddTask(time_start, TransportPhotons, base.get(), t_start, dt);
+    auto transport = time_start;
+    if (fd == FrequencyType::gray) {
+      transport =
+          use_ddmc ? itl.AddTask(time_start, TransportPhotons_DDMC<FrequencyType::gray>,
+                                 base.get(), t_start, dt)
+                   : itl.AddTask(time_start, TransportPhotons<FrequencyType::gray>,
+                                 base.get(), t_start, dt);
+    } else if (fd == FrequencyType::multigroup) {
+      transport =
+          use_ddmc
+              ? itl.AddTask(time_start, TransportPhotons_DDMC<FrequencyType::multigroup>,
+                            base.get(), t_start, dt)
+              : itl.AddTask(time_start, TransportPhotons<FrequencyType::multigroup>,
+                            base.get(), t_start, dt);
+    }
     auto reset_comms = itl.AddTask(transport, MeshResetCommunication, base.get());
     auto send = itl.AddTask(reset_comms, MeshSend, base.get());
     auto receive = itl.AddTask(transport | send, MeshReceive, base.get());

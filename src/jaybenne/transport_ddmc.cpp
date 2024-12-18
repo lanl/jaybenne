@@ -25,6 +25,7 @@ namespace jaybenne {
 //----------------------------------------------------------------------------------------
 //! \fn  TaskStatus TransportPhotons_DDMC
 //! \brief
+template <FrequencyType FT>
 TaskStatus TransportPhotons_DDMC(MeshData<Real> *md, const Real t_start, const Real dt) {
   namespace fj = field::jaybenne;
   namespace fjh = field::jaybenne::host;
@@ -35,12 +36,12 @@ TaskStatus TransportPhotons_DDMC(MeshData<Real> *md, const Real t_start, const R
   auto pm = md->GetParentPointer();
   auto &resolved_pkgs = pm->resolved_packages;
   auto &jb_pkg = pm->packages.Get("jaybenne");
-  auto &eos = jb_pkg->Param<EOS>("eos_d");
-  auto &opacity = jb_pkg->Param<Opacity>("opacity_d");
-  auto &scattering = jb_pkg->Param<Scattering>("scattering_d");
-  auto &rng_pool = jb_pkg->Param<RngPool>("rng_pool");
-  const Real vv = jb_pkg->Param<Real>("speed_of_light");
-  const Real &tau_ddmc = jb_pkg->Param<Real>("tau_ddmc");
+  auto &eos = jb_pkg->template Param<EOS>("eos_d");
+  auto &opacity = jb_pkg->template Param<Opacity>("opacity_d");
+  auto &scattering = jb_pkg->template Param<Scattering>("scattering_d");
+  auto &rng_pool = jb_pkg->template Param<RngPool>("rng_pool");
+  const Real vv = jb_pkg->template Param<Real>("speed_of_light");
+  const Real &tau_ddmc = jb_pkg->template Param<Real>("tau_ddmc");
 
   // Create SparsePack
   static auto desc =
@@ -113,12 +114,12 @@ TaskStatus TransportPhotons_DDMC(MeshData<Real> *md, const Real t_start, const R
                                     "Particle initially outside X3 logical bnds!");
 
             // calculate cell bounds
-            const Real xl = coords.Xc<parthenon::X1DIR>(ip) - 0.5 * dx_i;
-            const Real xu = coords.Xc<parthenon::X1DIR>(ip) + 0.5 * dx_i;
-            const Real yl = coords.Xc<parthenon::X2DIR>(jp) - 0.5 * dx_j;
-            const Real yu = coords.Xc<parthenon::X2DIR>(jp) + 0.5 * dx_j;
-            const Real zl = coords.Xc<parthenon::X3DIR>(kp) - 0.5 * dx_k;
-            const Real zu = coords.Xc<parthenon::X3DIR>(kp) + 0.5 * dx_k;
+            const Real xl = coords.template Xc<parthenon::X1DIR>(ip) - 0.5 * dx_i;
+            const Real xu = coords.template Xc<parthenon::X1DIR>(ip) + 0.5 * dx_i;
+            const Real yl = coords.template Xc<parthenon::X2DIR>(jp) - 0.5 * dx_j;
+            const Real yu = coords.template Xc<parthenon::X2DIR>(jp) + 0.5 * dx_j;
+            const Real zl = coords.template Xc<parthenon::X3DIR>(kp) - 0.5 * dx_k;
+            const Real zu = coords.template Xc<parthenon::X3DIR>(kp) + 0.5 * dx_k;
 
             // Extract physical quantities
             const Real &rho = vmesh(b, fjh::density(), kp, jp, ip);
@@ -139,12 +140,12 @@ TaskStatus TransportPhotons_DDMC(MeshData<Real> *md, const Real t_start, const R
               swarm_d.Xtoijk(x, y, z, ip, jp, kp);
 
               // calculate cell bounds
-              const Real xl = coords.Xc<parthenon::X1DIR>(ip) - 0.5 * dx_i;
-              const Real xu = coords.Xc<parthenon::X1DIR>(ip) + 0.5 * dx_i;
-              const Real yl = coords.Xc<parthenon::X2DIR>(jp) - 0.5 * dx_j;
-              const Real yu = coords.Xc<parthenon::X2DIR>(jp) + 0.5 * dx_j;
-              const Real zl = coords.Xc<parthenon::X3DIR>(kp) - 0.5 * dx_k;
-              const Real zu = coords.Xc<parthenon::X3DIR>(kp) + 0.5 * dx_k;
+              const Real xl = coords.template Xc<parthenon::X1DIR>(ip) - 0.5 * dx_i;
+              const Real xu = coords.template Xc<parthenon::X1DIR>(ip) + 0.5 * dx_i;
+              const Real yl = coords.template Xc<parthenon::X2DIR>(jp) - 0.5 * dx_j;
+              const Real yu = coords.template Xc<parthenon::X2DIR>(jp) + 0.5 * dx_j;
+              const Real zl = coords.template Xc<parthenon::X3DIR>(kp) - 0.5 * dx_k;
+              const Real zu = coords.template Xc<parthenon::X3DIR>(kp) + 0.5 * dx_k;
 
               // get face probabilities
               const Real &Px_l = vmesh(b, TE::F1, fj::ddmc_face_prob(), kp, jp, ip);
@@ -235,5 +236,13 @@ TaskStatus TransportPhotons_DDMC(MeshData<Real> *md, const Real t_start, const R
 
   return TaskStatus::complete;
 }
+//----------------------------------------------------------------------------------------
+//! template instantiations
+template TaskStatus TransportPhotons_DDMC<FrequencyType::gray>(MeshData<Real> *md,
+                                                               const Real t_start,
+                                                               const Real dt);
+template TaskStatus TransportPhotons_DDMC<FrequencyType::multigroup>(MeshData<Real> *md,
+                                                                     const Real t_start,
+                                                                     const Real dt);
 
 } // namespace jaybenne
