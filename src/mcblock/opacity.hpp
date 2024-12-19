@@ -26,14 +26,16 @@ using Opacity = singularity::photons::impl::Variant<
     singularity::photons::NonCGSUnits<singularity::photons::Gray>,
     singularity::photons::NonCGSUnits<singularity::photons::EPBremss>>;
 
-using MeanOpacity = singularity::photons::MeanOpacity;
+using MeanOpacity =
+    singularity::photons::MeanNonCGSUnits<singularity::photons::MeanOpacityBase>;
 
 // Reduced scattering variant just for jaybenne
 using Scattering = singularity::photons::impl::S_Variant<
     singularity::photons::NonCGSUnitsS<singularity::photons::GrayS>,
     singularity::photons::NonCGSUnitsS<singularity::photons::ThomsonS>>;
 
-using MeanScattering = singularity::photons::MeanSOpacity;
+using MeanScattering =
+    singularity::photons::MeanNonCGSUnitsS<singularity::photons::MeanSOpacityCGS>;
 
 } // namespace mcblock
 
