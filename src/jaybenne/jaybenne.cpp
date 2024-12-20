@@ -312,6 +312,9 @@ std::shared_ptr<StateDescriptor> Initialize(ParameterInput *pin, Opacity &opacit
 
   auto pkg = Initialize_impl(pin, eos, units);
 
+  PARTHENON_REQUIRE(pkg->Param<bool>("use_ddmc") == false,
+                    "DDMC not supported for multigroup currently!");
+
   // Frequency discretization
   auto time = units.time;
   Real numin = pin->GetReal("jaybenne", "numin"); // in Hz

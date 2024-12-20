@@ -36,19 +36,19 @@ TaskStatus TransportPhotons(MeshData<Real> *md, const Real t_start, const Real d
   auto &resolved_pkgs = pm->resolved_packages;
   auto &jb_pkg = pm->packages.Get("jaybenne");
   auto &eos = jb_pkg->template Param<EOS>("eos_d");
-  const Opacity *opacity = nullptr;
-  const Scattering *scattering = nullptr;
-  const MeanOpacity *mopacity = nullptr;
-  const MeanScattering *mscattering = nullptr;
+  Opacity opacity;
+  Scattering scattering;
+  MeanOpacity mopacity;
+  MeanScattering mscattering;
   int n_nubins = -1;
   Real numin = -1.;
   Real numax = -1.;
   if constexpr (FT == FrequencyType::gray) {
-    mopacity = &(jb_pkg->template Param<MeanOpacity>("mopacity_d"));
-    mscattering = &(jb_pkg->template Param<MeanScattering>("mscattering_d"));
+    mopacity = jb_pkg->template Param<MeanOpacity>("mopacity_d");
+    mscattering = jb_pkg->template Param<MeanScattering>("mscattering_d");
   } else if constexpr (FT == FrequencyType::multigroup) {
-    opacity = &(jb_pkg->template Param<Opacity>("opacity_d"));
-    scattering = &(jb_pkg->template Param<Scattering>("scattering_d"));
+    opacity = jb_pkg->template Param<Opacity>("opacity_d");
+    scattering = jb_pkg->template Param<Scattering>("scattering_d");
     n_nubins = jb_pkg->template Param<int>("n_nubins");
     numin = jb_pkg->template Param<Real>("numin");
     numax = jb_pkg->template Param<Real>("numax");
@@ -139,8 +139,15 @@ TaskStatus TransportPhotons(MeshData<Real> *md, const Real t_start, const Real d
             const Real &sie = vmesh(b, fjh::sie(), kp, jp, ip);
             const Real temp = eos.TemperatureFromDensityInternalEnergy(rho, sie);
             const Real &ff = vmesh(b, fj::fleck_factor(), kp, jp, ip);
-            const Real ss = scattering->TotalScatteringCoefficient(rho, temp, ee);
-            const Real aa = opacity->AbsorptionCoefficient(rho, temp, ee);
+            Real ss;
+            Real aa;
+            if constexpr (FT == FrequencyType::gray) {
+              ss = mscattering.RosselandMeanTotalScatteringCoefficient(rho, temp);
+              aa = mopacity.RosselandMeanAbsorptionCoefficient(rho, temp);
+            } else if constexpr (FT == FrequencyType::multigroup) {
+              ss = scattering.TotalScatteringCoefficient(rho, temp, ee);
+              aa = opacity.AbsorptionCoefficient(rho, temp, ee);
+            }
 
             // reset collision indicators
             bool is_absorbed = false;

@@ -116,7 +116,8 @@ TaskStatus SourcePhotons(T *md, const Real t_start, const Real dt) {
                 } else if constexpr (FT == FrequencyType::multigroup) {
                   // Construct emission CDF
                   const Real dlnu = (std::log(numaxd) - std::log(numind)) / n_nubinsd;
-                  Real nu = std::exp(std::log(numind) + 0.5 * dlnu) Real dnu = nu * dlnu;
+                  Real nu = std::exp(std::log(numind) + 0.5 * dlnu);
+                  Real dnu = nu * dlnu;
                   vmesh(b, fj::emission_cdf(0), k, j, i) =
                       opac.EmissivityPerNu(rho, temp,
                                            std::exp(std::log(numind) + 0.5 * dlnu)) *
