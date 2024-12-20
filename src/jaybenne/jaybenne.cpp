@@ -290,7 +290,7 @@ std::shared_ptr<StateDescriptor> Initialize(ParameterInput *pin, MeanOpacity &mo
 
   auto pkg = Initialize_impl(pin, eos, units);
 
-  pkg->AddParam<>("frequency_type", FrequencyType::multigroup);
+  pkg->AddParam<>("frequency_type", FrequencyType::gray);
 
   // Opacity model
   pkg->AddParam<>("mopacity_d", mopacity.GetOnDevice());

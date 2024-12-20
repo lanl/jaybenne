@@ -111,17 +111,15 @@ std::shared_ptr<StateDescriptor> Initialize(ParameterInput *pin) {
       auto opac = singularity::photons::Gray(1.e-100);
       mopacity =
           singularity::photons::MeanNonCGSUnits<singularity::photons::MeanOpacityBase>(
-              singularity::photons::MeanOpacityBase(opac, 1.e-10, 1.e10, 1, 1.e-10, 1.e10,
-                                                    1),
-              time_scale, mass_scale, length_scale, 1.);
+              singularity::photons::MeanOpacityBase(opac, -1, 1, 1, -1, 1, 1), time_scale,
+              mass_scale, length_scale, 1.);
     } else if (opacity_model == "constant") {
       Real kappa = pin->GetReal("mcblock", "opacity_constant_value");
       auto opac = singularity::photons::Gray(kappa);
       mopacity =
           singularity::photons::MeanNonCGSUnits<singularity::photons::MeanOpacityBase>(
-              singularity::photons::MeanOpacityBase(opac, 1.e-10, 1.e10, 1, 1.e-10, 1.e10,
-                                                    1),
-              time_scale, mass_scale, length_scale, 1.);
+              singularity::photons::MeanOpacityBase(opac, -1, 1, 2, -1, 1, 2), time_scale,
+              mass_scale, length_scale, 1.);
     } else if (opacity_model == "table") {
       std::string table_filename = pin->GetString("mcblock", "opacity_table");
       mopacity =
@@ -169,16 +167,14 @@ std::shared_ptr<StateDescriptor> Initialize(ParameterInput *pin) {
       auto sopac = singularity::photons::GrayS(0.0, apm);
       mscattering =
           singularity::photons::MeanNonCGSUnitsS<singularity::photons::MeanSOpacityCGS>(
-              singularity::photons::MeanSOpacityCGS(sopac, 1.e-10, 1.e10, 1, 1.e-10,
-                                                    1.e10, 1),
+              singularity::photons::MeanSOpacityCGS(sopac, -1., 1., 2, -1., 1., 2),
               time_scale, mass_scale, length_scale, 1.);
     } else if (scattering_model == "constant") {
       Real kappa_s = pin->GetReal("mcblock", "scattering_constant_value");
       auto sopac = singularity::photons::GrayS(kappa_s, apm);
       mscattering =
           singularity::photons::MeanNonCGSUnitsS<singularity::photons::MeanSOpacityCGS>(
-              singularity::photons::MeanSOpacityCGS(sopac, 1.e-10, 1.e10, 1, 1.e-10,
-                                                    1.e10, 1),
+              singularity::photons::MeanSOpacityCGS(sopac, -1., 1., 2, -1., 1., 2),
               time_scale, mass_scale, length_scale, 1.);
     } else {
       PARTHENON_FAIL("Only none or constant scattering models supported!");
