@@ -111,7 +111,7 @@ std::shared_ptr<StateDescriptor> Initialize(ParameterInput *pin) {
       auto opac = singularity::photons::Gray(1.e-100);
       mopacity =
           singularity::photons::MeanNonCGSUnits<singularity::photons::MeanOpacityBase>(
-              singularity::photons::MeanOpacityBase(opac, -1, 1, 1, -1, 1, 1), time_scale,
+              singularity::photons::MeanOpacityBase(opac, -1, 1, 2, -1, 1, 2), time_scale,
               mass_scale, length_scale, 1.);
     } else if (opacity_model == "constant") {
       Real kappa = pin->GetReal("mcblock", "opacity_constant_value");
