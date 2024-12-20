@@ -75,6 +75,7 @@ source_strategy = uniform
 seed = 349857
 
 <mcblock>
+frequency_type = gray
 opacity_model = none
 scattering_model = constant
 scattering_constant_value = 1.0e3
