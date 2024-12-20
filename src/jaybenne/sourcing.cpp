@@ -33,15 +33,15 @@ TaskStatus SourcePhotons(T *md, const Real t_start, const Real dt) {
   auto &jb_pkg = pm->packages.Get("jaybenne");
   const Real h = jb_pkg->template Param<Real>("planck_constant");
   auto &eos = jb_pkg->template Param<EOS>("eos_d");
-  const MeanOpacity *mopacity = nullptr;
-  const Opacity *opacity = nullptr;
   int n_nubins = -1;
   Real numin = -1.;
   Real numax = -1.;
+  MeanOpacity mopacity;
+  Opacity opacity;
   if constexpr (FT == FrequencyType::gray) {
-    mopacity = &(jb_pkg->template Param<MeanOpacity>("mopacity_d"));
+    mopacity = jb_pkg->template Param<MeanOpacity>("mopacity_d");
   } else if constexpr (FT == FrequencyType::multigroup) {
-    opacity = &(jb_pkg->template Param<Opacity>("opacity_d"));
+    opacity = jb_pkg->template Param<Opacity>("opacity_d");
     n_nubins = jb_pkg->template Param<int>("n_nubins");
     numin = jb_pkg->template Param<Real>("numin");
     numax = jb_pkg->template Param<Real>("numax");
@@ -112,7 +112,7 @@ TaskStatus SourcePhotons(T *md, const Real t_start, const Real dt) {
               } else if constexpr (ST == SourceType::emission) {
                 Real emis = -1.;
                 if constexpr (FT == FrequencyType::gray) {
-                  emis = opac->Emissivity(rho, temp);
+                  emis = mopac.Emissivity(rho, temp);
                 } else if constexpr (FT == FrequencyType::multigroup) {
                   // Construct emission CDF
                   const Real dlnu = (std::log(numaxd) - std::log(numind)) / n_nubinsd;
@@ -121,13 +121,14 @@ TaskStatus SourcePhotons(T *md, const Real t_start, const Real dt) {
                   for (int n = 1; n < n_nubinsd; n++) {
                     const Real nu = std::exp(std::log(numind) + (n + 0.5) * dlnu);
                     vmesh(b, fj::emission_cdf(n), k, j, i) =
-                        opac->EmissivityPerNu(rho, temp, nu) +
+                        opac.EmissivityPerNu(rho, temp, nu) +
                         vmesh(b, fj::emission_cdf(n - 1), k, j, i);
                   }
                   emis = 0.;
                   for (int n = 0; n < n_nubinsd; n++) {
+                    const Real dnu = dlnu * std::exp(std::log(numind) + (n + 0.5) * dlnu);
                     // Get total emissivity
-                    emis += vmesh(b, fj::emission_cdf(n), k, j, i);
+                    emis += vmesh(b, fj::emission_cdf(n), k, j, i) * dnu;
                     // Normalize emission CDF
                     vmesh(b, fj::emission_cdf(n), k, j, i) /=
                         vmesh(b, fj::emission_cdf(n_nubinsd - 1), k, j, i);

@@ -346,14 +346,15 @@ Real EstimateTimestepMesh(MeshData<Real> *md) {
 }
 
 //----------------------------------------------------------------------------------------
-//! \fn  TaskStatus UpdateDerivedTransportFields
+//! \fn  TaskStatus UpdateDerivedTransportFieldsImpl
 //! \brief  fields set: Fleck factor, DDMC face probabilities
 //!         Fleck factor formula:
 //!         betaf = 4aT^3 / (rho * cv)
 //!         f = 1 / (1 + betaf * opacP * c * dt)
 //!         NOTE: if J = opacP * c * aR * T^4,
 //!               then f = 1 / (1 + 4 * J * dt / (rho * cv * T))
-TaskStatus UpdateDerivedTransportFields(MeshData<Real> *md, const Real dt) {
+template <FrequencyType FT>
+TaskStatus UpdateDerivedTransportFieldsImpl(MeshData<Real> *md, const Real dt) {
   namespace fj = field::jaybenne;
   namespace fjh = field::jaybenne::host;
 
@@ -361,7 +362,17 @@ TaskStatus UpdateDerivedTransportFields(MeshData<Real> *md, const Real dt) {
   auto &resolved_pkgs = pm->resolved_packages;
   auto &jbn = pm->packages.Get("jaybenne");
   auto &eos = jbn->Param<EOS>("eos_d");
-  auto &opacity = jbn->Param<Opacity>("opacity_d");
+  Opacity opacity;
+  Scattering scattering;
+  MeanOpacity mopacity;
+  MeanScattering mscattering;
+  if constexpr (FT == FrequencyType::gray) {
+    mopacity = jbn->Param<MeanOpacity>("mopacity_d");
+    mscattering = jbn->Param<MeanScattering>("mscattering_d");
+  } else if constexpr (FT == FrequencyType::multigroup) {
+    opacity = jbn->Param<Opacity>("opacity_d");
+    scattering = jbn->Param<Scattering>("scattering_d");
+  }
 
   const auto &ib = md->GetBoundsI(IndexDomain::interior);
   const auto &jb = md->GetBoundsJ(IndexDomain::interior);
@@ -381,7 +392,13 @@ TaskStatus UpdateDerivedTransportFields(MeshData<Real> *md, const Real dt) {
         const Real &sie = vmesh(b, fjh::sie(), k, j, i);
         const Real temp = eos.TemperatureFromDensityInternalEnergy(rho, sie);
         const Real cv = eos.SpecificHeatFromDensityInternalEnergy(rho, sie);
-        const Real emis = opacity.Emissivity(rho, temp);
+        Real emis;
+        if constexpr (FT == FrequencyType::gray) {
+          emis = mopacity.Emissivity(rho, temp);
+
+        } else if constexpr (FT == FrequencyType::multigroup) {
+          emis = opacity.Emissivity(rho, temp);
+        }
         vmesh(b, fj::fleck_factor(), k, j, i) =
             1.0 / (1.0 + (4.0 * emis / (rho * cv * temp)) * dt);
       });
@@ -398,9 +415,6 @@ TaskStatus UpdateDerivedTransportFields(MeshData<Real> *md, const Real dt) {
 
     // get DDMC cell optical thickness threshold
     const Real tau_ddmc = jbn->Param<Real>("tau_ddmc");
-
-    // get scattering to calculate DDMC threshold
-    auto &scattering = jbn->Param<Scattering>("scattering_d");
 
     // calculate DDMC face probabilities in X1 direction
     const int iu = ib.e + 1;
@@ -432,11 +446,22 @@ TaskStatus UpdateDerivedTransportFields(MeshData<Real> *md, const Real dt) {
           const Real &rho_u = vmesh(b, fjh::density(), k, j, i);
           const Real &sie_u = vmesh(b, fjh::sie(), k, j, i);
           const Real temp_u = eos.TemperatureFromDensityInternalEnergy(rho_u, sie_u);
-          // TODO: replace 3rd argument when this routine operates in multigroup
-          const Real ss_l = scattering.TotalScatteringCoefficient(rho_l, temp_l, 1.0);
-          const Real aa_l = opacity.AbsorptionCoefficient(rho_l, temp_l, 1.0);
-          const Real ss_u = scattering.TotalScatteringCoefficient(rho_u, temp_u, 1.0);
-          const Real aa_u = opacity.AbsorptionCoefficient(rho_u, temp_u, 1.0);
+          Real ss_l;
+          Real aa_l;
+          Real ss_u;
+          Real aa_u;
+          if constexpr (FT == FrequencyType::gray) {
+            ss_l = mscattering.RosselandMeanTotalScatteringCoefficient(rho_l, temp_l);
+            aa_l = mopacity.RosselandMeanAbsorptionCoefficient(rho_l, temp_l);
+            ss_u = mscattering.RosselandMeanTotalScatteringCoefficient(rho_u, temp_u);
+            aa_u = mopacity.RosselandMeanAbsorptionCoefficient(rho_u, temp_u);
+          } else if constexpr (FT == FrequencyType::multigroup) {
+            // TODO: replace 3rd argument when this routine operates in multigroup
+            ss_l = scattering.TotalScatteringCoefficient(rho_l, temp_l, 1.0);
+            aa_l = opacity.AbsorptionCoefficient(rho_l, temp_l, 1.0);
+            ss_u = scattering.TotalScatteringCoefficient(rho_u, temp_u, 1.0);
+            aa_u = opacity.AbsorptionCoefficient(rho_u, temp_u, 1.0);
+          }
 
           // calculate optical thicknesses from lower and upper cell
           Real tau_l = dx_lx * (ss_l + aa_l);
@@ -479,11 +504,22 @@ TaskStatus UpdateDerivedTransportFields(MeshData<Real> *md, const Real dt) {
             const Real &rho_u = vmesh(b, fjh::density(), k, j, i);
             const Real &sie_u = vmesh(b, fjh::sie(), k, j, i);
             const Real temp_u = eos.TemperatureFromDensityInternalEnergy(rho_u, sie_u);
-            // TODO: replace 3rd argument when this routine operates in multigroup
-            const Real ss_l = scattering.TotalScatteringCoefficient(rho_l, temp_l, 1.0);
-            const Real aa_l = opacity.AbsorptionCoefficient(rho_l, temp_l, 1.0);
-            const Real ss_u = scattering.TotalScatteringCoefficient(rho_u, temp_u, 1.0);
-            const Real aa_u = opacity.AbsorptionCoefficient(rho_u, temp_u, 1.0);
+            Real ss_l;
+            Real aa_l;
+            Real ss_u;
+            Real aa_u;
+            if constexpr (FT == FrequencyType::gray) {
+              ss_l = mscattering.RosselandMeanTotalScatteringCoefficient(rho_l, temp_l);
+              aa_l = mopacity.RosselandMeanAbsorptionCoefficient(rho_l, temp_l);
+              ss_u = mscattering.RosselandMeanTotalScatteringCoefficient(rho_u, temp_u);
+              aa_u = mopacity.RosselandMeanAbsorptionCoefficient(rho_u, temp_u);
+            } else if constexpr (FT == FrequencyType::multigroup) {
+              // TODO: replace 3rd argument when this routine operates in multigroup
+              ss_l = scattering.TotalScatteringCoefficient(rho_l, temp_l, 1.0);
+              aa_l = opacity.AbsorptionCoefficient(rho_l, temp_l, 1.0);
+              ss_u = scattering.TotalScatteringCoefficient(rho_u, temp_u, 1.0);
+              aa_u = opacity.AbsorptionCoefficient(rho_u, temp_u, 1.0);
+            }
 
             // calculate optical thicknesses from lower and upper cell
             Real tau_l = dx_ly * (ss_l + aa_l);
@@ -528,11 +564,22 @@ TaskStatus UpdateDerivedTransportFields(MeshData<Real> *md, const Real dt) {
             const Real &rho_u = vmesh(b, fjh::density(), k, j, i);
             const Real &sie_u = vmesh(b, fjh::sie(), k, j, i);
             const Real temp_u = eos.TemperatureFromDensityInternalEnergy(rho_u, sie_u);
-            // TODO: replace 3rd argument when this routine operates in multigroup
-            const Real ss_l = scattering.TotalScatteringCoefficient(rho_l, temp_l, 1.0);
-            const Real aa_l = opacity.AbsorptionCoefficient(rho_l, temp_l, 1.0);
-            const Real ss_u = scattering.TotalScatteringCoefficient(rho_u, temp_u, 1.0);
-            const Real aa_u = opacity.AbsorptionCoefficient(rho_u, temp_u, 1.0);
+            Real ss_l;
+            Real aa_l;
+            Real ss_u;
+            Real aa_u;
+            if constexpr (FT == FrequencyType::gray) {
+              ss_l = mscattering.RosselandMeanTotalScatteringCoefficient(rho_l, temp_l);
+              aa_l = mopacity.RosselandMeanAbsorptionCoefficient(rho_l, temp_l);
+              ss_u = mscattering.RosselandMeanTotalScatteringCoefficient(rho_u, temp_u);
+              aa_u = mopacity.RosselandMeanAbsorptionCoefficient(rho_u, temp_u);
+            } else if constexpr (FT == FrequencyType::multigroup) {
+              // TODO: replace 3rd argument when this routine operates in multigroup
+              ss_l = scattering.TotalScatteringCoefficient(rho_l, temp_l, 1.0);
+              aa_l = opacity.AbsorptionCoefficient(rho_l, temp_l, 1.0);
+              ss_u = scattering.TotalScatteringCoefficient(rho_u, temp_u, 1.0);
+              aa_u = opacity.AbsorptionCoefficient(rho_u, temp_u, 1.0);
+            }
 
             // calculate optical thicknesses from lower and upper cell
             Real tau_l = dx_lz * (ss_l + aa_l);
@@ -548,6 +595,27 @@ TaskStatus UpdateDerivedTransportFields(MeshData<Real> *md, const Real dt) {
   }
 
   return TaskStatus::complete;
+}
+
+//----------------------------------------------------------------------------------------
+//! \fn  TaskStatus UpdateDerivedTransportFieldsImpl
+//! \brief  fields set: Fleck factor, DDMC face probabilities
+//!         Fleck factor formula:
+//!         betaf = 4aT^3 / (rho * cv)
+//!         f = 1 / (1 + betaf * opacP * c * dt)
+//!         NOTE: if J = opacP * c * aR * T^4,
+//!               then f = 1 / (1 + 4 * J * dt / (rho * cv * T))
+TaskStatus UpdateDerivedTransportFields(MeshData<Real> *md, const Real dt) {
+  auto pm = md->GetParentPointer();
+  auto &jbn = pm->packages.Get("jaybenne");
+  auto &frequency_type = jbn->Param<FrequencyType>("frequency_type");
+  if (frequency_type == FrequencyType::gray) {
+    return UpdateDerivedTransportFieldsImpl<FrequencyType::gray>(md, dt);
+  } else if (frequency_type == FrequencyType::multigroup) {
+    return UpdateDerivedTransportFieldsImpl<FrequencyType::multigroup>(md, dt);
+  } else {
+    PARTHENON_FAIL("frequency_type not recognized!");
+  }
 }
 
 //----------------------------------------------------------------------------------------
