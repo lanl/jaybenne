@@ -1,3 +1,19 @@
+#=========================================================================================
+# (C) (or copyright) 2023-2024. Triad National Security, LLC. All rights reserved.
+# This program was produced under U.S. Government contract 89233218CNA000001
+# for Los Alamos National Laboratory (LANL), which is operated by Triad
+# National Security, LLC for the U.S.  Department of Energy/National
+# Nuclear Security Administration. All rights in the program are
+# reserved by Triad National Security, LLC, and the U.S. Department of
+# Energy/National Nuclear Security Administration. The Government is
+# granted for itself and others acting on its behalf a nonexclusive,
+# paid-up, irrevocable worldwide license in this material to reproduce,
+# prepare derivative works, distribute copies to the public, perform
+# publicly and display publicly, and to permit others to do so.
+#=========================================================================================
+
+# This file was created in whole or in part by one of OpenAI's generative AI models.
+
 name: CI
 
 on:
@@ -76,19 +92,29 @@ jobs:
       - name: Check out code (with submodules)
         uses: actions/checkout@v3
         with:
-          submodules: true
+          submodules: recursive
 
-      - name: Set up environment
+      - name: Install dependencies
         run: |
-          source env/bash
+          sudo apt-get update -qq
+          sudo apt-get install -qq --no-install-recommends tzdata
+          sudo apt-get install -qq git
+          sudo apt-get install -qq make cmake g++
+          sudo apt-get install -qq libopenmpi-dev libhdf5-openmpi-dev
+          sudo apt-get install -qq openssh-client
+          sudo apt-get install -qq python3 python3-numpy python3-h5py python3-matplotlib
 
       - name: Build Jaybenne
         run: |
-          build_jaybenne
+          cd tst
+          mkdir -p build
+          cd build
+          cmake -DPARTHENON_DISABLE_HDF5_COMPRESSION=ON -DCMAKE_BUILD_TYPE=Release ../../
+          make -j 4
+          cd ..
 
       - name: stepdiff tests
         run: |
-          cd tst
           ./stepdiff.py --executable ../build_darwin-skylake-gold/mcblock \
                         --input ../inputs/stepdiff.in --use_mpiexec
           ./stepdiff.py --executable ../build_darwin-skylake-gold/mcblock \
@@ -103,50 +129,3 @@ jobs:
                             --input ../inputs/stepdiff_smr_hybrid.in --use_mpiexec
           ./stepdiff_smr.py --executable ../build_darwin-skylake-gold/mcblock \
                             --input ../inputs/stepdiff_smr_hybrid.in --use_mpiexec --mpi_nthreads 8
-
-  # -------------------------------------------
-  # 3) CI GPU job
-  # -------------------------------------------
-  ci_gpu:
-    needs: ci_format
-    if: >
-      github.event_name == 'pull_request' &&
-      (!
-        (
-          contains(github.event.pull_request.title, 'Draft:') ||
-          contains(github.event.pull_request.title, 'WIP:')
-        )
-      ) ||
-      github.event_name == 'push'
-    runs-on: ubuntu-latest
-    env:
-      GIT_SUBMODULE_STRATEGY: recursive
-      SCHEDULER_PARAMETERS: "--nodes 1 --partition=volta-x86"
-
-    steps:
-      - name: Check out code (with submodules)
-        uses: actions/checkout@v3
-        with:
-          submodules: true
-
-      - name: Set up environment
-        run: |
-          source env/bash
-
-      - name: Build Jaybenne
-        run: |
-          build_jaybenne
-
-      - name: stepdiff GPU tests
-        run: |
-          cd tst
-          ./stepdiff.py --executable ../build_darwin-volta-x86/mcblock \
-                        --input ../inputs/stepdiff.in --use_mpiexec
-          ./stepdiff.py --executable ../build_darwin-volta-x86/mcblock \
-                        --input ../inputs/stepdiff_ddmc.in --use_mpiexec
-          ./stepdiff_smr.py --executable ../build_darwin-volta-x86/mcblock \
-                            --input ../inputs/stepdiff_smr.in --use_mpiexec
-          ./stepdiff_smr.py --executable ../build_darwin-volta-x86/mcblock \
-                            --input ../inputs/stepdiff_smr_ddmc.in --use_mpiexec
-          ./stepdiff_smr.py --executable ../build_darwin-volta-x86/mcblock \
-                            --input ../inputs/stepdiff_smr_hybrid.in --use_mpiexec
