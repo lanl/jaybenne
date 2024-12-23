@@ -1,0 +1,152 @@
+name: CI
+
+on:
+  push:
+    branches: [ "main" ]
+  pull_request:
+
+jobs:
+  # -------------------------------------------
+  # 1) CI Format job
+  # -------------------------------------------
+  ci_format:
+    # If you want to skip if the PR title has 'Draft:' or 'WIP:',
+    # you can approximate with the condition below.
+    if: >
+      github.event_name == 'pull_request' &&
+      (!
+        (
+          contains(github.event.pull_request.title, 'Draft:') ||
+          contains(github.event.pull_request.title, 'WIP:')
+        )
+      ) ||
+      github.event_name == 'push'
+    runs-on: ubuntu-latest
+
+    # If you need HPC resources, set up a self-hosted runner here:
+    # runs-on: self-hosted
+    # or
+    # runs-on: [self-hosted, darwin-slurm-shared]
+
+    # Equivalent to 'variables:' in GitLab
+    env:
+      GIT_SUBMODULE_STRATEGY: recursive
+      SCHEDULER_PARAMETERS: "--nodes 1 --partition=skylake-gold"
+
+    steps:
+      - name: Check out code (with submodules)
+        uses: actions/checkout@v3
+        with:
+          submodules: true
+
+      - name: Set up environment
+        run: |
+          source env/bash
+
+      - name: Format
+        run: |
+          VERBOSE=1 ./style/format.sh
+
+      - name: Check for changes
+        run: |
+          git diff --exit-code --ignore-submodules
+
+  # -------------------------------------------
+  # 2) CI CPU job
+  # -------------------------------------------
+  ci_cpu:
+    # If you wanted it to run only if ci_format succeeded:
+    needs: ci_format
+    # Or skip if 'Draft:' or 'WIP:' in PR title
+    if: >
+      github.event_name == 'pull_request' &&
+      (!
+        (
+          contains(github.event.pull_request.title, 'Draft:') ||
+          contains(github.event.pull_request.title, 'WIP:')
+        )
+      ) ||
+      github.event_name == 'push'
+    runs-on: ubuntu-latest
+    env:
+      GIT_SUBMODULE_STRATEGY: recursive
+      SCHEDULER_PARAMETERS: "--nodes 1 --partition=skylake-gold"
+
+    steps:
+      - name: Check out code (with submodules)
+        uses: actions/checkout@v3
+        with:
+          submodules: true
+
+      - name: Set up environment
+        run: |
+          source env/bash
+
+      - name: Build Jaybenne
+        run: |
+          build_jaybenne
+
+      - name: stepdiff tests
+        run: |
+          cd tst
+          ./stepdiff.py --executable ../build_darwin-skylake-gold/mcblock \
+                        --input ../inputs/stepdiff.in --use_mpiexec
+          ./stepdiff.py --executable ../build_darwin-skylake-gold/mcblock \
+                        --input ../inputs/stepdiff_ddmc.in --use_mpiexec
+          ./stepdiff_smr.py --executable ../build_darwin-skylake-gold/mcblock \
+                            --input ../inputs/stepdiff_smr.in --use_mpiexec
+          ./stepdiff_smr.py --executable ../build_darwin-skylake-gold/mcblock \
+                            --input ../inputs/stepdiff_smr_ddmc.in --use_mpiexec
+          ./stepdiff_smr.py --executable ../build_darwin-skylake-gold/mcblock \
+                            --input ../inputs/stepdiff_smr_ddmc.in --use_mpiexec --mpi_nthreads 8
+          ./stepdiff_smr.py --executable ../build_darwin-skylake-gold/mcblock \
+                            --input ../inputs/stepdiff_smr_hybrid.in --use_mpiexec
+          ./stepdiff_smr.py --executable ../build_darwin-skylake-gold/mcblock \
+                            --input ../inputs/stepdiff_smr_hybrid.in --use_mpiexec --mpi_nthreads 8
+
+  # -------------------------------------------
+  # 3) CI GPU job
+  # -------------------------------------------
+  ci_gpu:
+    needs: ci_format
+    if: >
+      github.event_name == 'pull_request' &&
+      (!
+        (
+          contains(github.event.pull_request.title, 'Draft:') ||
+          contains(github.event.pull_request.title, 'WIP:')
+        )
+      ) ||
+      github.event_name == 'push'
+    runs-on: ubuntu-latest
+    env:
+      GIT_SUBMODULE_STRATEGY: recursive
+      SCHEDULER_PARAMETERS: "--nodes 1 --partition=volta-x86"
+
+    steps:
+      - name: Check out code (with submodules)
+        uses: actions/checkout@v3
+        with:
+          submodules: true
+
+      - name: Set up environment
+        run: |
+          source env/bash
+
+      - name: Build Jaybenne
+        run: |
+          build_jaybenne
+
+      - name: stepdiff GPU tests
+        run: |
+          cd tst
+          ./stepdiff.py --executable ../build_darwin-volta-x86/mcblock \
+                        --input ../inputs/stepdiff.in --use_mpiexec
+          ./stepdiff.py --executable ../build_darwin-volta-x86/mcblock \
+                        --input ../inputs/stepdiff_ddmc.in --use_mpiexec
+          ./stepdiff_smr.py --executable ../build_darwin-volta-x86/mcblock \
+                            --input ../inputs/stepdiff_smr.in --use_mpiexec
+          ./stepdiff_smr.py --executable ../build_darwin-volta-x86/mcblock \
+                            --input ../inputs/stepdiff_smr_ddmc.in --use_mpiexec
+          ./stepdiff_smr.py --executable ../build_darwin-volta-x86/mcblock \
+                            --input ../inputs/stepdiff_smr_hybrid.in --use_mpiexec
