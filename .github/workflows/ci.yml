@@ -116,17 +116,17 @@ jobs:
       - name: stepdiff tests
         run: |
           cd tst
-          ./stepdiff.py --executable ../build_darwin-skylake-gold/mcblock \
+          ./stepdiff.py --executable ../build/mcblock \
                         --input ../inputs/stepdiff.in --use_mpiexec
-          ./stepdiff.py --executable ../build_darwin-skylake-gold/mcblock \
+          ./stepdiff.py --executable ../build/mcblock \
                         --input ../inputs/stepdiff_ddmc.in --use_mpiexec
-          ./stepdiff_smr.py --executable ../build_darwin-skylake-gold/mcblock \
+          ./stepdiff_smr.py --executable ../build/mcblock \
                             --input ../inputs/stepdiff_smr.in --use_mpiexec
-          ./stepdiff_smr.py --executable ../build_darwin-skylake-gold/mcblock \
+          ./stepdiff_smr.py --executable ../build/mcblock \
                             --input ../inputs/stepdiff_smr_ddmc.in --use_mpiexec
-          ./stepdiff_smr.py --executable ../build_darwin-skylake-gold/mcblock \
+          ./stepdiff_smr.py --executable ../build/mcblock \
                             --input ../inputs/stepdiff_smr_ddmc.in --use_mpiexec --mpi_nthreads 8
-          ./stepdiff_smr.py --executable ../build_darwin-skylake-gold/mcblock \
+          ./stepdiff_smr.py --executable ../build/mcblock \
                             --input ../inputs/stepdiff_smr_hybrid.in --use_mpiexec
-          ./stepdiff_smr.py --executable ../build_darwin-skylake-gold/mcblock \
+          ./stepdiff_smr.py --executable ../build/mcblock \
                             --input ../inputs/stepdiff_smr_hybrid.in --use_mpiexec --mpi_nthreads 8
