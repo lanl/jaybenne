@@ -115,6 +115,7 @@ jobs:
 
       - name: stepdiff tests
         run: |
+          cd tst
           ./stepdiff.py --executable ../build_darwin-skylake-gold/mcblock \
                         --input ../inputs/stepdiff.in --use_mpiexec
           ./stepdiff.py --executable ../build_darwin-skylake-gold/mcblock \
