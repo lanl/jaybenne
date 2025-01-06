@@ -326,7 +326,7 @@ def analytic_comparison(
 ):
 
     input_file = os.path.join(
-        os.path.dirname(os.path.abspath(__file__)), "../inputs/", args.input_file
+        os.path.dirname(os.path.abspath(__file__)), "../inputs/", args.input
     )
     problem = read_input_value("parthenon/job", "problem_id", input_file)
     print("\n=== ANALYTIC COMPARISON TEST PROBLEM ===")
@@ -450,13 +450,12 @@ def analytic_comparison(
 def gold_comparison(
     args,
     variables,
-    input_file,
     modified_inputs={},
     compression_factor=1,
     tolerance=0.2,
 ):
     input_file = os.path.join(
-        os.path.dirname(os.path.abspath(__file__)), "../inputs/", args.input_file
+        os.path.dirname(os.path.abspath(__file__)), "../inputs/", args.input
     )
     problem = read_input_value("parthenon/job", "problem_id", input_file)
     print("\n=== GOLD COMPARISON TEST PROBLEM ===")
