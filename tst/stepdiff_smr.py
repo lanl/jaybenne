@@ -55,6 +55,7 @@ code = rt.analytic_comparison(
     modified_inputs=modified_inputs,
     executable=args.executable,
     use_mpiexec=args.use_mpiexec,
+    oversubscribe=args.oversubscribe,
     mpi_nthreads=args.mpi_nthreads,
     build_type=args.build_type,
     tolerance=0.3,
