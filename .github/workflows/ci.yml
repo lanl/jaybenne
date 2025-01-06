@@ -111,22 +111,23 @@ jobs:
           cd build
           cmake -DPARTHENON_DISABLE_HDF5_COMPRESSION=ON -DCMAKE_BUILD_TYPE=Release ../../
           make -j 4
+          echo "JAYBENNE_EXECUTABLE=$(pwd)/mcblock" >> $GITHUB_ENV
           cd ..
 
       - name: stepdiff tests
         run: |
           cd tst
-          ./stepdiff.py --executable ../build/mcblock \
+          ./stepdiff.py --executable $JAYBENNE_EXECUTABLE \
                         --input ../inputs/stepdiff.in --use_mpiexec
-          ./stepdiff.py --executable ../build/mcblock \
+          ./stepdiff.py --executable $JAYBENNE_EXECUTABLE \
                         --input ../inputs/stepdiff_ddmc.in --use_mpiexec
-          ./stepdiff_smr.py --executable ../build/mcblock \
+          ./stepdiff_smr.py --executable $JAYBENNE_EXECUTABLE \
                             --input ../inputs/stepdiff_smr.in --use_mpiexec
-          ./stepdiff_smr.py --executable ../build/mcblock \
+          ./stepdiff_smr.py --executable $JAYBENNE_EXECUTABLE \
                             --input ../inputs/stepdiff_smr_ddmc.in --use_mpiexec
-          ./stepdiff_smr.py --executable ../build/mcblock \
+          ./stepdiff_smr.py --executable $JAYBENNE_EXECUTABLE \
                             --input ../inputs/stepdiff_smr_ddmc.in --use_mpiexec --mpi_nthreads 8
-          ./stepdiff_smr.py --executable ../build/mcblock \
+          ./stepdiff_smr.py --executable $JAYBENNE_EXECUTABLE \
                             --input ../inputs/stepdiff_smr_hybrid.in --use_mpiexec
-          ./stepdiff_smr.py --executable ../build/mcblock \
+          ./stepdiff_smr.py --executable $JAYBENNE_EXECUTABLE \
                             --input ../inputs/stepdiff_smr_hybrid.in --use_mpiexec --mpi_nthreads 8
