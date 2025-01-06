@@ -202,6 +202,12 @@ def get_default_parser():
         default="weighted_mean",
         help="Method of comparison against true solution at each point or via mean [pointwise, mean]",
     )
+    parser.add_argument(
+        "--oversubscribe",
+        dest="use_mpiexec",
+        action="store_true",
+        help="Allow MPI to oversubscribe cores",
+    )
     return parser
 
 
@@ -258,6 +264,7 @@ def run_problem(
     modified_inputs,
     cleanup,
     use_mpiexec,
+    oversubscribe,
     mpi_nthreads,
 ):
     if executable is None:
@@ -287,7 +294,9 @@ def run_problem(
     # Run test problem
     preamble = []
     if use_mpiexec:
-        preamble = preamble + ["mpiexec", "-n", f"{mpi_nthreads}"]
+        preamble += ["mpiexec", "-n", f"{mpi_nthreads}"]
+        if oversubscribe:
+            preamble += ["--oversubscribe"]
     call(preamble + [executable, "-i", TEMPORARY_INPUT_FILE])
 
     # Get last dump file
@@ -309,6 +318,7 @@ def analytic_comparison(
     modified_inputs={},
     executable=None,
     use_mpiexec=False,
+    oversubscribe=False,
     mpi_nthreads=1,
     build_type="Release",
     tolerance=1.0e-10,
@@ -326,6 +336,7 @@ def analytic_comparison(
     print(f"= executable:   {executable}")
     print(f"= use_mpiexec:  {use_mpiexec}")
     if use_mpiexec:
+        print(f"= oversubscribe: {oversubscribe}")
         print(f"= mpi_nthreads: {mpi_nthreads}")
     print(f"= build_type:   {build_type}")
     print(f"= tolerance:    {tolerance}")
@@ -347,6 +358,7 @@ def analytic_comparison(
         modified_inputs,
         cleanup,
         use_mpiexec,
+        oversubscribe,
         mpi_nthreads,
     )
 
@@ -443,6 +455,7 @@ def gold_comparison(
     modified_inputs={},
     executable=None,
     use_mpiexec=False,
+    oversubscribe=False,
     build_type="Release",
     upgold=False,
     compression_factor=1,
@@ -455,14 +468,16 @@ def gold_comparison(
     )
     problem = read_input_value("parthenon/job", "problem_id", input_file)
     print("\n=== GOLD COMPARISON TEST PROBLEM ===")
-    print(f"= problem:     {problem}")
-    print(f"= executable:  {executable}")
-    print(f"= use_mpiexec: {use_mpiexec}")
-    print(f"= build_type:  {build_type}")
-    print(f"= compression: {compression_factor}")
-    print(f"= tolerance:   {tolerance}")
-    print(f"= cleanup:     {cleanup}")
-    print(f"= comparison:  {comparison}")
+    print(f"= problem:       {problem}")
+    print(f"= executable:    {executable}")
+    print(f"= use_mpiexec:   {use_mpiexec}")
+    if use_mpiexec:
+        print(f"= oversubscribe: {oversubscribe}")
+    print(f"= build_type:    {build_type}")
+    print(f"= compression:   {compression_factor}")
+    print(f"= tolerance:     {tolerance}")
+    print(f"= cleanup:       {cleanup}")
+    print(f"= comparison:    {comparison}")
     print("====================================\n")
 
     assert (
@@ -470,7 +485,13 @@ def gold_comparison(
     ), 'Invalid "comparison" option!'
 
     dump = run_problem(
-        executable, build_type, input_file, modified_inputs, cleanup, use_mpiexec
+        executable,
+        build_type,
+        input_file,
+        modified_inputs,
+        cleanup,
+        use_mpiexec,
+        oversubscribe,
     )
 
     # Construct array of results values
