@@ -21,6 +21,11 @@ on:
     branches: [ "main" ]
   pull_request:
 
+# Cancel outdated workflows
+concurrency:
+  group: ${{ github.workflow }}-${{ github.head_ref || github.ref }}
+  cancel-in-progress: true
+
 jobs:
   # -------------------------------------------
   # 1) CI Format job
