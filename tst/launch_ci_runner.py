@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # ========================================================================================
-#  (C) (or copyright) 2024. Triad National Security, LLC. All rights reserved.
+#  (C) (or copyright) 2025. Triad National Security, LLC. All rights reserved.
 #
 #  This program was produced under U.S. Government contract 89233218CNA000001 for Los
 #  Alamos National Laboratory (LANL), which is operated by Triad National Security, LLC
@@ -85,7 +85,7 @@ def run_tests_in_temp_dir(pr_number, head_repo, head_ref, output_dir):
             "-c",
             "source ../env/bash && build_jaybenne -b "
             + build_dir
-            + " -j 20 -f && cd "
+            + " -f && cd "
             + os.path.join(temp_dir, "tst")
             + " && ./stepdiff.py --executable " + os.path.join(build_dir, "mcblock")
             + " --input ../inputs/stepdiff.in" + " --use_mpiexec",
@@ -186,6 +186,7 @@ if __name__ == "__main__":
                 "projects",
                 "jovian",
                 "ci",
+                "jaybenne",
                 f"pr_{args.pr_number}",
                 current_date_time,
             )
