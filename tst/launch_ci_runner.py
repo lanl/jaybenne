@@ -90,23 +90,23 @@ def run_tests_in_temp_dir(pr_number, head_repo, head_ref, output_dir):
             + " && ./stepdiff.py --executable "
             + os.path.join(build_dir, "mcblock")
             + " --input ../inputs/stepdiff.in"
-            + " --use_mpiexec",
-            +" && ./stepdiff.py --executable "
+            + " --use_mpiexec"
+            + " && ./stepdiff.py --executable "
             + os.path.join(build_dir, "mcblock")
-            + " --input ../inputs/stepdiff_ddmc.in --use_mpiexec",
-            +" && ./stepdiff_smr.py --executable "
+            + " --input ../inputs/stepdiff_ddmc.in --use_mpiexec"
+            + " && ./stepdiff_smr.py --executable "
             + os.path.join(build_dir, "mcblock")
-            + " --input ../inputs/stepdiff_smr.in --use_mpiexec",
-            +" && ./stepdiff_smr.py --executable "
+            + " --input ../inputs/stepdiff_smr.in --use_mpiexec"
+            + " && ./stepdiff_smr.py --executable "
             + os.path.join(build_dir, "mcblock")
-            + " --input ../inputs/stepdiff_smr_ddmc.in --use_mpiexec",
-            +" && ./stepdiff_smr.py --executable "
+            + " --input ../inputs/stepdiff_smr_ddmc.in --use_mpiexec"
+            + " && ./stepdiff_smr.py --executable "
             + os.path.join(build_dir, "mcblock")
-            + " --input ../inputs/stepdiff_smr_ddmc.in --use_mpiexec --mpi_nthreads 8",
-            +" && ./stepdiff_smr.py --executable "
+            + " --input ../inputs/stepdiff_smr_ddmc.in --use_mpiexec --mpi_nthreads 8"
+            + " && ./stepdiff_smr.py --executable "
             + os.path.join(build_dir, "mcblock")
-            + " --input ../inputs/stepdiff_smr_hybrid.in --use_mpiexec",
-            +" && ./stepdiff_smr.py --executable "
+            + " --input ../inputs/stepdiff_smr_hybrid.in --use_mpiexec"
+            + " && ./stepdiff_smr.py --executable "
             + os.path.join(build_dir, "mcblock")
             + " --input ../inputs/stepdiff_smr_hybrid.in --use_mpiexec --mpi_nthreads 8",
         ]
