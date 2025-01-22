@@ -142,8 +142,9 @@ TaskStatus TransportPhotons(MeshData<Real> *md, const Real t_start, const Real d
             Real ss;
             Real aa;
             if constexpr (FT == FrequencyType::gray) {
+              // TODO: use TotalScatteringCoefficient(rho, temp), when available
               ss = mscattering.RosselandMeanTotalScatteringCoefficient(rho, temp);
-              aa = mopacity.RosselandMeanAbsorptionCoefficient(rho, temp);
+              aa = mopacity.AbsorptionCoefficient(rho, temp);
             } else if constexpr (FT == FrequencyType::multigroup) {
               ss = scattering.TotalScatteringCoefficient(rho, temp, ee);
               aa = opacity.AbsorptionCoefficient(rho, temp, ee);
