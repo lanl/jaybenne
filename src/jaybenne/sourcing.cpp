@@ -134,7 +134,7 @@ TaskStatus SourcePhotons(T *md, const Real t_start, const Real dt) {
                   }
                   emis = 0.;
                   for (int n = 0; n < n_nubinsd; n++) {
-                    const Real dnu = dlnu * std::exp(std::log(numind) + (n + 0.5) * dlnu);
+                    const Real dnu = dlnu * numind * std::exp((n + 0.5) * dlnu);
                     // Get total emissivity
                     emis += vmesh(b, fj::emission_cdf(n), k, j, i);
                     // Normalize emission CDF
@@ -254,7 +254,7 @@ TaskStatus SourcePhotons(T *md, const Real t_start, const Real dt) {
               }
             }
             const Real dlnu = (std::log(numaxd) - std::log(numind)) / n_nubinsd;
-            const Real nu = std::exp(std::log(numind) + (n + 0.5) * dlnu);
+            const Real nu = numind * std::exp((n + 0.5) * dlnu);
             ppack_r(b, ph::energy(), n) = hd * nu;
           }
           ppack_r(b, ph::weight(), n) =
