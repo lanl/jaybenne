@@ -223,6 +223,9 @@ TaskStatus SourcePhotons(T *md, const Real t_start, const Real dt) {
           ppack_i(b, ph::ijk(1), n) = j;
           ppack_i(b, ph::ijk(2), n) = k;
 
+          // Set energy weight
+          ppack_r(b, ph::weight(), n) = vmesh(b, fj::source_ew_per_cell(), k, j, i);
+
           // Sample position uniformly in space over cell
           // TODO(BRR) only valid for Cartesian
           ppack_r(b, swarm_position::x(), n) = xi + dx_i * (rng_gen.drand() - 0.5);
@@ -257,8 +260,6 @@ TaskStatus SourcePhotons(T *md, const Real t_start, const Real dt) {
             const Real nu = numind * std::exp((n + 0.5) * dlnu);
             ppack_r(b, ph::energy(), n) = hd * nu;
           }
-          ppack_r(b, ph::weight(), n) =
-              vmesh(b, fj::source_ew_per_cell(), k, j, i) / ppack_r(b, ph::energy(), n);
 
           if constexpr (ST == SourceType::emission) {
             dejbn -= ppack_r(b, ph::weight(), n);
