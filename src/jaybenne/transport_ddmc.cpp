@@ -33,12 +33,14 @@ TaskStatus TransportPhotons_DDMC(MeshData<Real> *md, const Real t_start, const R
   namespace ph = particle::photons;
   using TE = parthenon::TopologicalElement;
 
+  PARTHENON_REQUIRE(FT == FrequencyType::gray, "DDMC only works in gray!");
+
   auto pm = md->GetParentPointer();
   auto &resolved_pkgs = pm->resolved_packages;
   auto &jb_pkg = pm->packages.Get("jaybenne");
   auto &eos = jb_pkg->template Param<EOS>("eos_d");
-  auto &opacity = jb_pkg->template Param<Opacity>("opacity_d");
-  auto &scattering = jb_pkg->template Param<Scattering>("scattering_d");
+  auto &mopacity = jb_pkg->template Param<MeanOpacity>("mopacity_d");
+  auto &mscattering = jb_pkg->template Param<MeanScattering>("mscattering_d");
   auto &rng_pool = jb_pkg->template Param<RngPool>("rng_pool");
   const Real vv = jb_pkg->template Param<Real>("speed_of_light");
   const Real &tau_ddmc = jb_pkg->template Param<Real>("tau_ddmc");
@@ -126,8 +128,9 @@ TaskStatus TransportPhotons_DDMC(MeshData<Real> *md, const Real t_start, const R
             const Real &sie = vmesh(b, fjh::sie(), kp, jp, ip);
             const Real temp = eos.TemperatureFromDensityInternalEnergy(rho, sie);
             const Real &ff = vmesh(b, fj::fleck_factor(), kp, jp, ip);
-            const Real ss = scattering.TotalScatteringCoefficient(rho, temp, ee);
-            const Real aa = opacity.AbsorptionCoefficient(rho, temp, ee);
+            const Real ss =
+                mscattering.RosselandMeanTotalScatteringCoefficient(rho, temp);
+            const Real aa = mopacity.AbsorptionCoefficient(rho, temp);
 
             // reset collision indicators
             bool is_absorbed = false;

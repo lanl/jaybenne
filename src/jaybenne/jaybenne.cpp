@@ -410,8 +410,7 @@ TaskStatus UpdateDerivedTransportFieldsImpl(MeshData<Real> *md, const Real dt) {
   const bool use_ddmc = jbn->Param<bool>("use_ddmc");
   if (use_ddmc) {
 
-    // TODO: what units do face-based prolongation-restriction operations assume?
-    // (Do the probabilities need to be divided by face area, for instance?)
+    PARTHENON_REQUIRE(FT == FrequencyType::gray, "DDMC only works in gray!");
 
     // define extrapolation distance (Habetler & Matkowski 1975)
     constexpr Real lam_ext = 0.7104;
