@@ -104,6 +104,7 @@ elif [[ $PARTITION == "darwin-volta-x86" ]]; then
     module load clang/12.0.1
     module load nvhpc/23.5
     module load cuda/11.4.2
+    module load gcc/9.4.0
     module load hdf5/1.12.2
     module load miniconda3
     source /projects/opt/centos8/x86_64/miniconda3/py39_4.12.0/bin/activate /usr/projects/jovian/dependencies/python/volta-x86-py39
