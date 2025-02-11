@@ -14,6 +14,7 @@
 #define JAYBENNE_JAYBENNE_HPP_
 
 // C/C++ includes
+#include <limits>
 #include <memory>
 #include <stdio.h>
 #include <stdlib.h>
@@ -59,6 +60,16 @@ std::shared_ptr<parthenon::StateDescriptor> Initialize(parthenon::ParameterInput
 enum class SourceStrategy { uniform, energy };
 enum class SourceType { thermal, emission };
 enum class FrequencyType { gray, multigroup };
+
+// Initialization nulls
+template <typename T = Real>
+KOKKOS_FORCEINLINE_FUNCTION constexpr auto JaybenneNull() {
+  return std::numeric_limits<T>::quiet_NaN();
+}
+template <>
+KOKKOS_FORCEINLINE_FUNCTION constexpr auto JaybenneNull<int>() {
+  return std::numeric_limits<int>::max();
+}
 
 // Tasks
 template <FrequencyType FT>

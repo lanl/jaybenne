@@ -33,9 +33,9 @@ TaskStatus SourcePhotons(T *md, const Real t_start, const Real dt) {
   auto &jb_pkg = pm->packages.Get("jaybenne");
   const Real h = jb_pkg->template Param<Real>("planck_constant");
   auto &eos = jb_pkg->template Param<EOS>("eos_d");
-  int n_nubins = -1;
-  Real numin = -1.;
-  Real numax = -1.;
+  int n_nubins = JaybenneNull<int>();
+  Real numin = JaybenneNull<Real>();
+  Real numax = JaybenneNull<Real>();
   MeanOpacity mopacity;
   Opacity opacity;
   if constexpr (FT == FrequencyType::gray) {
@@ -106,11 +106,11 @@ TaskStatus SourcePhotons(T *md, const Real t_start, const Real dt) {
               [[maybe_unused]] const auto numind = numin;
               [[maybe_unused]] const auto numaxd = numax;
               [[maybe_unused]] const auto n_nubinsd = n_nubins;
-              Real erad = 0.0;
+              Real erad = JaybenneNull<Real>();
               if constexpr (ST == SourceType::thermal) {
                 erad = (4.0 * sbd / vvd) * std::pow(temp, 4.0) * dv;
               } else if constexpr (ST == SourceType::emission) {
-                Real emis = -1.;
+                Real emis = JaybenneNull<Real>();
                 if constexpr (FT == FrequencyType::gray) {
                   emis = mopac.Emissivity(rho, temp);
                 } else if constexpr (FT == FrequencyType::multigroup) {
@@ -132,7 +132,7 @@ TaskStatus SourcePhotons(T *md, const Real t_start, const Real dt) {
                         opac.EmissivityPerNu(rho, temp, nu) * dnu +
                         vmesh(b, fj::emission_cdf(n - 1), k, j, i);
                   }
-                  emis = 0.;
+                  emis = 0.0;
                   for (int n = 0; n < n_nubinsd; n++) {
                     const Real dnu = dlnu * numind * std::exp((n + 0.5) * dlnu);
                     // Get total emissivity

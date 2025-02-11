@@ -40,9 +40,9 @@ TaskStatus TransportPhotons(MeshData<Real> *md, const Real t_start, const Real d
   Scattering scattering;
   MeanOpacity mopacity;
   MeanScattering mscattering;
-  int n_nubins = -1;
-  Real numin = -1.;
-  Real numax = -1.;
+  int n_nubins = JaybenneNull<int>();
+  Real numin = JaybenneNull<Real>();
+  Real numax = JaybenneNull<Real>();
   if constexpr (FT == FrequencyType::gray) {
     mopacity = jb_pkg->template Param<MeanOpacity>("mopacity_d");
     mscattering = jb_pkg->template Param<MeanScattering>("mscattering_d");
@@ -139,8 +139,8 @@ TaskStatus TransportPhotons(MeshData<Real> *md, const Real t_start, const Real d
             const Real &sie = vmesh(b, fjh::sie(), kp, jp, ip);
             const Real temp = eos.TemperatureFromDensityInternalEnergy(rho, sie);
             const Real &ff = vmesh(b, fj::fleck_factor(), kp, jp, ip);
-            Real ss;
-            Real aa;
+            Real ss = JaybenneNull<Real>();
+            Real aa = JaybenneNull<Real>();
             if constexpr (FT == FrequencyType::gray) {
               // TODO: use TotalScatteringCoefficient(rho, temp), when available
               ss = mscattering.RosselandMeanTotalScatteringCoefficient(rho, temp);

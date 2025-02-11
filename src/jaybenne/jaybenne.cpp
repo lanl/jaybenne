@@ -395,10 +395,9 @@ TaskStatus UpdateDerivedTransportFieldsImpl(MeshData<Real> *md, const Real dt) {
         const Real &sie = vmesh(b, fjh::sie(), k, j, i);
         const Real temp = eos.TemperatureFromDensityInternalEnergy(rho, sie);
         const Real cv = eos.SpecificHeatFromDensityInternalEnergy(rho, sie);
-        Real emis;
+        Real emis = JaybenneNull<Real>();
         if constexpr (FT == FrequencyType::gray) {
           emis = mopacity.Emissivity(rho, temp);
-
         } else if constexpr (FT == FrequencyType::multigroup) {
           emis = opacity.Emissivity(rho, temp);
         }
