@@ -343,8 +343,12 @@ TaskStatus UpdateDerivedTransportFields(MeshData<Real> *md, const Real dt) {
 
           // get current, lower, upper neighbor block levels in x-direction
           const Real rlev = static_cast<Real>(vmesh.GetLevel(b, 0, 0, 0));
-          const Real rlev_lx = static_cast<Real>(vmesh.GetLevel(b, 0, 0, -1));
-          const Real rlev_ux = static_cast<Real>(vmesh.GetLevel(b, 0, 0, 1));
+          const Real rlev_lx = (vmesh.IsPhysicalBoundary(b, 0, 0, -1))
+                                   ? rlev
+                                   : static_cast<Real>(vmesh.GetLevel(b, 0, 0, -1));
+          const Real rlev_ux = (vmesh.IsPhysicalBoundary(b, 0, 0, 1))
+                                   ? rlev
+                                   : static_cast<Real>(vmesh.GetLevel(b, 0, 0, 1));
 
           // calculate neighbor dx values
           const Real dx_lx = i == ib.s ? std::pow(2.0, rlev - rlev_lx) * dx_i : dx_i;
@@ -391,8 +395,12 @@ TaskStatus UpdateDerivedTransportFields(MeshData<Real> *md, const Real dt) {
 
             // get current, lower, upper neighbor block levels in x-direction
             const Real rlev = static_cast<Real>(vmesh.GetLevel(b, 0, 0, 0));
-            const Real rlev_ly = static_cast<Real>(vmesh.GetLevel(b, 0, -1, 0));
-            const Real rlev_uy = static_cast<Real>(vmesh.GetLevel(b, 0, 1, 0));
+            const Real rlev_ly = (vmesh.IsPhysicalBoundary(b, 0, -1, 0))
+                                     ? rlev
+                                     : static_cast<Real>(vmesh.GetLevel(b, 0, -1, 0));
+            const Real rlev_uy = (vmesh.IsPhysicalBoundary(b, 0, 1, 0))
+                                     ? rlev
+                                     : static_cast<Real>(vmesh.GetLevel(b, 0, 1, 0));
 
             // calculate neighbor dx values
             const Real dx_ly = j == jb.s ? std::pow(2.0, rlev - rlev_ly) * dx_j : dx_j;
@@ -440,8 +448,12 @@ TaskStatus UpdateDerivedTransportFields(MeshData<Real> *md, const Real dt) {
 
             // get current, lower, upper neighbor block levels in x-direction
             const Real rlev = static_cast<Real>(vmesh.GetLevel(b, 0, 0, 0));
-            const Real rlev_lz = static_cast<Real>(vmesh.GetLevel(b, -1, 0, 0));
-            const Real rlev_uz = static_cast<Real>(vmesh.GetLevel(b, 1, 0, 0));
+            const Real rlev_lz = (vmesh.IsPhysicalBoundary(b, -1, 0, 0))
+                                     ? rlev
+                                     : static_cast<Real>(vmesh.GetLevel(b, -1, 0, 0));
+            const Real rlev_uz = (vmesh.IsPhysicalBoundary(b, 1, 0, 0))
+                                     ? rlev
+                                     : static_cast<Real>(vmesh.GetLevel(b, 1, 0, 0));
 
             // calculate neighbor dx values
             const Real dx_lz = k == kb.s ? std::pow(2.0, rlev - rlev_lz) * dx_k : dx_k;
