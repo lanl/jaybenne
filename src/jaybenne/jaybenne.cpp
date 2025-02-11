@@ -105,13 +105,13 @@ TaskCollection RadiationStep(Mesh *pmesh, const Real t_start, const Real dt) {
     auto derived = tl.AddTask(none, UpdateDerivedTransportFields, base.get(), dt);
     auto source = derived;
     if (fd == FrequencyType::gray) {
-      auto source = tl.AddTask(
+      source = tl.AddTask(
           derived,
           jaybenne::SourcePhotons<MeshData<Real>, jaybenne::SourceType::emission,
                                   FrequencyType::gray>,
           base.get(), t_start, dt);
     } else if (fd == FrequencyType::multigroup) {
-      auto source = tl.AddTask(
+      source = tl.AddTask(
           derived,
           jaybenne::SourcePhotons<MeshData<Real>, jaybenne::SourceType::emission,
                                   FrequencyType::multigroup>,
