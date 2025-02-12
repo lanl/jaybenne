@@ -35,6 +35,7 @@ TaskStatus TransportPhotons(MeshData<Real> *md, const Real t_start, const Real d
   auto pm = md->GetParentPointer();
   auto &resolved_pkgs = pm->resolved_packages;
   auto &jb_pkg = pm->packages.Get("jaybenne");
+  const Real h = jb_pkg->template Param<Real>("planck_constant");
   auto &eos = jb_pkg->template Param<EOS>("eos_d");
   Opacity opacity;
   Scattering scattering;
@@ -58,8 +59,8 @@ TaskStatus TransportPhotons(MeshData<Real> *md, const Real t_start, const Real d
 
   // Create SparsePack
   static auto desc =
-      MakePackDescriptor<fjh::density, fjh::sie, fj::fleck_factor, fj::energy_delta>(
-          resolved_pkgs.get());
+      MakePackDescriptor<fjh::density, fjh::sie, fj::emission_cdf, fj::fleck_factor,
+                         fj::energy_delta>(resolved_pkgs.get());
   auto vmesh = desc.GetPack(md);
 
   // Create SwarmPacks
@@ -86,6 +87,13 @@ TaskStatus TransportPhotons(MeshData<Real> *md, const Real t_start, const Real d
         auto [b, n] = ppack_r.GetBlockParticleIndices(idx);
         const auto &swarm_d = ppack_r.GetContext(b);
         if (swarm_d.IsActive(n)) {
+
+          // frequency data, needed for multigroup
+          [[maybe_unused]] const auto hd = h;
+          [[maybe_unused]] const auto numind = numin;
+          [[maybe_unused]] const auto numaxd = numax;
+          [[maybe_unused]] const auto n_nubinsd = n_nubins;
+
           auto rng_gen = rng_pool.get_state();
           auto &coords = vmesh.GetCoordinates(b);
           const Real &dx_i = coords.DxcFA(X1DIR, 0, 0, 0);
@@ -99,7 +107,7 @@ TaskStatus TransportPhotons(MeshData<Real> *md, const Real t_start, const Real d
           Real &vy = ppack_r(b, ph::v(1), n);
           Real &vz = ppack_r(b, ph::v(2), n);
           const Real &ww = ppack_r(b, ph::weight(), n);
-          const Real &ee = ppack_r(b, ph::energy(), n);
+          Real &ee = ppack_r(b, ph::energy(), n);
 
           // Position and logical location of particle
           Real &x = ppack_r(b, sp::x(), n);
@@ -188,9 +196,29 @@ TaskStatus TransportPhotons(MeshData<Real> *md, const Real t_start, const Real d
 
             if (is_scattered) {
               // process scattering
-              // TODO(BRR): if eff scatter, redistribute frequency
               // TODO(BRR): template on scattering model
               scatter(rng_gen, vv, vx, vy, vz);
+
+              // if multigroup eff scatter, redistribute frequency
+              if constexpr (FT == FrequencyType::multigroup) {
+
+                // sample whether effective scattering occurred
+                const Real rand1 = rng_gen.drand();
+                if (rand1 * ((1.0 - ff) * aa + ss) < (1.0 - ff) * aa) {
+
+                  // Sample energy from CDF
+                  const Real rand2 = rng_gen.drand();
+                  int n;
+                  for (n = 0; n < n_nubinsd; n++) {
+                    if (vmesh(b, fj::emission_cdf(n), kp, jp, ip) >= rand2) {
+                      break;
+                    }
+                  }
+                  const Real dlnu = (std::log(numaxd) - std::log(numind)) / n_nubinsd;
+                  const Real nu = numind * std::exp((n + 0.5) * dlnu);
+                  ee = hd * nu;
+                }
+              }
             }
           }
           rng_pool.free_state(rng_gen);
