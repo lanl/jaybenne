@@ -425,7 +425,7 @@ TaskStatus UpdateDerivedTransportFieldsImpl(MeshData<Real> *md, const Real dt) {
         iu, KOKKOS_LAMBDA(const int &b, const int &k, const int &j, const int &i) {
           // get coordinates of block
           auto &coords = vmesh.GetCoordinates(b);
-          const Real &dx_i = coords.DxcFA(parthenon::X1DIR, 0, 0, 0);
+          const Real &dx_i = coords.Dxc<parthenon::X1DIR>(0, 0, 0);
 
           // get current, lower, upper neighbor block levels in x-direction
           const Real rlev = static_cast<Real>(vmesh.GetLevel(b, 0, 0, 0));
@@ -488,7 +488,7 @@ TaskStatus UpdateDerivedTransportFieldsImpl(MeshData<Real> *md, const Real dt) {
           ib.e, KOKKOS_LAMBDA(const int &b, const int &k, const int &j, const int &i) {
             // get coordinates of block
             auto &coords = vmesh.GetCoordinates(b);
-            const Real &dx_j = coords.DxcFA(parthenon::X2DIR, 0, 0, 0);
+            const Real &dx_j = coords.Dxc<parthenon::X2DIR>(0, 0, 0);
 
             // get current, lower, upper neighbor block levels in x-direction
             const Real rlev = static_cast<Real>(vmesh.GetLevel(b, 0, 0, 0));
@@ -552,7 +552,7 @@ TaskStatus UpdateDerivedTransportFieldsImpl(MeshData<Real> *md, const Real dt) {
           ib.e, KOKKOS_LAMBDA(const int &b, const int &k, const int &j, const int &i) {
             // get coordinates of block
             auto &coords = vmesh.GetCoordinates(b);
-            const Real &dx_k = coords.DxcFA(parthenon::X3DIR, 0, 0, 0);
+            const Real &dx_k = coords.Dxc<parthenon::X3DIR>(0, 0, 0);
 
             // get current, lower, upper neighbor block levels in x-direction
             const Real rlev = static_cast<Real>(vmesh.GetLevel(b, 0, 0, 0));
@@ -691,10 +691,10 @@ TaskStatus EvaluateRadiationEnergy(T *md) {
         const auto &swarm_d = ppack_r.GetContext(b);
         if (swarm_d.IsActive(n)) {
           auto &coords = vmesh.GetCoordinates(b);
-          const Real &dv = coords.template Volume<TopologicalElement::CC>();
           const int &ip = ppack_i(b, ph::ijk(0), n);
           const int &jp = ppack_i(b, ph::ijk(1), n);
           const int &kp = ppack_i(b, ph::ijk(2), n);
+          const Real &dv = coords.CellVolume(kp, jp, ip);
           Kokkos::atomic_add(&vmesh(b, fj::energy_tally(), kp, jp, ip),
                              ppack_r(b, ph::weight(), n) / dv);
         }
@@ -753,7 +753,7 @@ TaskStatus UpdateFluid(MeshData<Real> *md) {
       kb.s, kb.e, jb.s, jb.e, ib.s, ib.e,
       KOKKOS_LAMBDA(const int &b, const int &k, const int &j, const int &i) {
         auto &coords = vmesh.GetCoordinates(b);
-        const Real &dv = coords.Volume<TopologicalElement::CC>();
+        const Real &dv = coords.CellVolume(k, j, i);
         Real &ee = vmesh(b, fjh::update_energy(), k, j, i);
         const Real delta = vmesh(b, fj::energy_delta(), k, j, i) / dv;
         ee += delta;

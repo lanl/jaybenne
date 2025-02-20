@@ -77,9 +77,9 @@ TaskStatus TransportPhotons_DDMC(MeshData<Real> *md, const Real t_start, const R
         if (swarm_d.IsActive(n)) {
           auto rng_gen = rng_pool.get_state();
           auto &coords = vmesh.GetCoordinates(b);
-          const Real &dx_i = coords.DxcFA(X1DIR, 0, 0, 0);
-          const Real &dx_j = coords.DxcFA(X2DIR, 0, 0, 0);
-          const Real &dx_k = coords.DxcFA(X3DIR, 0, 0, 0);
+          const Real &dx_i = coords.Dxc<X1DIR>(0, 0, 0);
+          const Real &dx_j = coords.Dxc<X2DIR>(0, 0, 0);
+          const Real &dx_k = coords.Dxc<X3DIR>(0, 0, 0);
           const Real dx_push = std::min(dx_i, std::min(dx_j, dx_k));
 
           // Particle properties

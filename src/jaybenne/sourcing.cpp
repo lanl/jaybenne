@@ -88,7 +88,7 @@ TaskStatus SourcePhotons(T *md, const Real t_start, const Real dt) {
       DEFAULT_OUTER_LOOP_PATTERN, "SourcePhotons1", DevExecSpace(), 0, 0, 0, nblocks - 1,
       KOKKOS_LAMBDA(parthenon::team_mbr_t member, const int &b) {
         auto &coords = vmesh.GetCoordinates(b);
-        const Real &dv = coords.template Volume<TopologicalElement::CC>();
+        const Real &dv = coords.CellVolume(0, 0, 0);
         int block_sum = 0.0;
         par_reduce_inner(
             member, kb.s, kb.e, jb.s, jb.e, ib.s, ib.e,
@@ -195,9 +195,9 @@ TaskStatus SourcePhotons(T *md, const Real t_start, const Real dt) {
         const Real &xi = coords.template Xc<X1DIR>(i);
         const Real &yi = coords.template Xc<X2DIR>(j);
         const Real &zi = coords.template Xc<X3DIR>(k);
-        const Real &dx_i = coords.DxcFA(X1DIR, 0, 0, 0);
-        const Real &dx_j = coords.DxcFA(X2DIR, 0, 0, 0);
-        const Real &dx_k = coords.DxcFA(X3DIR, 0, 0, 0);
+        const Real &dx_i = coords.template Dxc<X1DIR>(k, j, i);
+        const Real &dx_j = coords.template Dxc<X2DIR>(k, j, i);
+        const Real &dx_k = coords.template Dxc<X3DIR>(k, j, i);
         const Real x_min = coords.template Xc<parthenon::X1DIR>(ib.s) - 0.5 * dx_i;
         const Real y_min = coords.template Xc<parthenon::X2DIR>(jb.s) - 0.5 * dx_j;
         const Real z_min = coords.template Xc<parthenon::X3DIR>(kb.s) - 0.5 * dx_k;
