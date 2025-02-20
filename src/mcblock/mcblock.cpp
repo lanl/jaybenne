@@ -91,58 +91,111 @@ std::shared_ptr<StateDescriptor> Initialize(ParameterInput *pin) {
   pkg->AddParam<>("length_scale", length_scale);
   pkg->AddParam<>("temperature_scale", temperature_scale);
 
-  // Absorption opacity model
-  OpacityModel opacity_model;
-  Opacity opacity;
-  std::string opacity_model_name = pin->GetString("mcblock", "opacity_model");
-  if (opacity_model_name == "none") {
-    opacity_model = OpacityModel::none;
-    opacity = singularity::photons::NonCGSUnits<singularity::photons::Gray>(
-        singularity::photons::Gray(0.0), time_scale, mass_scale, length_scale,
-        temperature_scale);
-  } else if (opacity_model_name == "constant") {
-    opacity_model = OpacityModel::constant;
-    Real kappa = pin->GetReal("mcblock", "opacity_constant_value");
-    opacity = singularity::photons::NonCGSUnits<singularity::photons::Gray>(
-        singularity::photons::Gray(kappa), time_scale, mass_scale, length_scale,
-        temperature_scale);
-  } else if (opacity_model_name == "ep_bremss") {
-    opacity_model = OpacityModel::epbremss;
-    opacity = singularity::photons::NonCGSUnits<singularity::photons::EPBremss>(
-        singularity::photons::EPBremss(), time_scale, mass_scale, length_scale,
-        temperature_scale);
+  // Frequency discretization
+  std::string frequency_type_name = pin->GetString("mcblock", "frequency_type");
+  FrequencyType frequency_type;
+  if (frequency_type_name == "gray") {
+    frequency_type = FrequencyType::gray;
+  } else if (frequency_type_name == "multigroup") {
+    frequency_type = FrequencyType::multigroup;
   } else {
-    // nothing else supported for now
-    PARTHENON_FAIL("Only none or constant opacity models supported!");
+    PARTHENON_FAIL("\"mcblock/frequency_type\" not recognized!");
   }
+
+  // Absorption opacity model
+  Opacity opacity;
+  MeanOpacity mopacity;
+  std::string opacity_model = pin->GetString("mcblock", "opacity_model");
+  if (frequency_type == FrequencyType::gray) {
+    if (opacity_model == "none") {
+      auto opac = singularity::photons::Gray(1.e-100);
+      mopacity =
+          singularity::photons::MeanNonCGSUnits<singularity::photons::MeanOpacityBase>(
+              singularity::photons::MeanOpacityBase(opac, -1, 1, 2, -1, 1, 2), time_scale,
+              mass_scale, length_scale, 1.);
+    } else if (opacity_model == "constant") {
+      Real kappa = pin->GetReal("mcblock", "opacity_constant_value");
+      auto opac = singularity::photons::Gray(kappa);
+      mopacity =
+          singularity::photons::MeanNonCGSUnits<singularity::photons::MeanOpacityBase>(
+              singularity::photons::MeanOpacityBase(opac, -1, 1, 2, -1, 1, 2), time_scale,
+              mass_scale, length_scale, 1.);
+    } else if (opacity_model == "table") {
+      std::string table_filename = pin->GetString("mcblock", "opacity_table");
+      mopacity =
+          singularity::photons::MeanNonCGSUnits<singularity::photons::MeanOpacityBase>(
+              singularity::photons::MeanOpacityBase(table_filename), time_scale,
+              mass_scale, length_scale, 1.);
+    } else {
+      PARTHENON_FAIL("Only none, constant, or table opacity models supported!");
+    }
+  } else if (frequency_type == FrequencyType::multigroup) {
+    if (opacity_model == "none") {
+      opacity = singularity::photons::NonCGSUnits<singularity::photons::Gray>(
+          singularity::photons::Gray(0.0), time_scale, mass_scale, length_scale,
+          temperature_scale);
+    } else if (opacity_model == "constant") {
+      Real kappa = pin->GetReal("mcblock", "opacity_constant_value");
+      opacity = singularity::photons::NonCGSUnits<singularity::photons::Gray>(
+          singularity::photons::Gray(kappa), time_scale, mass_scale, length_scale,
+          temperature_scale);
+    } else if (opacity_model == "ep_bremss") {
+      opacity = singularity::photons::NonCGSUnits<singularity::photons::EPBremss>(
+          singularity::photons::EPBremss(), time_scale, mass_scale, length_scale,
+          temperature_scale);
+    } else {
+      // nothing else supported for now
+      PARTHENON_FAIL("Only none or constant opacity models supported!");
+    }
+  }
+  pkg->AddParam<>("frequency_type", frequency_type);
   pkg->AddParam<>("opacity_model", opacity_model);
   pkg->AddParam<>("opacity_h", opacity);
+  pkg->AddParam<>("mopacity_h", mopacity);
 
   // Scattering opacity model
   // TODO(BRR) Remove apm with switch in singularity-opac to cm^2/g opacities?
   const Real apm =
       pin->GetOrAddReal("mcblock", "apm", 1.); // Average particle mass (code units)
   pkg->AddParam<>("apm", apm);
-  ScatteringModel scattering_model;
   Scattering scattering;
-  std::string scattering_model_name =
+  MeanScattering mscattering;
+  std::string scattering_model =
       pin->GetOrAddString("mcblock", "scattering_model", "none");
-  if (scattering_model_name == "none") {
-    scattering_model = ScatteringModel::none;
-    scattering = singularity::photons::NonCGSUnitsS<singularity::photons::GrayS>(
-        singularity::photons::GrayS(0.0, apm), time_scale, mass_scale, length_scale,
-        temperature_scale);
-  } else if (scattering_model_name == "constant") {
-    scattering_model = ScatteringModel::constant;
-    Real kappa_s = pin->GetReal("mcblock", "scattering_constant_value");
-    scattering = singularity::photons::NonCGSUnitsS<singularity::photons::GrayS>(
-        singularity::photons::GrayS(kappa_s, apm), time_scale, mass_scale, length_scale,
-        temperature_scale);
-  } else {
-    PARTHENON_FAIL("Only none or constant scattering models supported!");
+  if (frequency_type == FrequencyType::gray) {
+    if (scattering_model == "none") {
+      auto sopac = singularity::photons::GrayS(0.0, apm);
+      mscattering =
+          singularity::photons::MeanNonCGSUnitsS<singularity::photons::MeanSOpacityCGS>(
+              singularity::photons::MeanSOpacityCGS(sopac, -1., 1., 2, -1., 1., 2),
+              time_scale, mass_scale, length_scale, 1.);
+    } else if (scattering_model == "constant") {
+      Real kappa_s = pin->GetReal("mcblock", "scattering_constant_value");
+      auto sopac = singularity::photons::GrayS(kappa_s, apm);
+      mscattering =
+          singularity::photons::MeanNonCGSUnitsS<singularity::photons::MeanSOpacityCGS>(
+              singularity::photons::MeanSOpacityCGS(sopac, -1., 1., 2, -1., 1., 2),
+              time_scale, mass_scale, length_scale, 1.);
+    } else {
+      PARTHENON_FAIL("Only none or constant scattering models supported!");
+    }
+  } else if (frequency_type == FrequencyType::multigroup) {
+    if (scattering_model == "none") {
+      scattering = singularity::photons::NonCGSUnitsS<singularity::photons::GrayS>(
+          singularity::photons::GrayS(0.0, apm), time_scale, mass_scale, length_scale,
+          temperature_scale);
+    } else if (scattering_model == "constant") {
+      Real kappa_s = pin->GetReal("mcblock", "scattering_constant_value");
+      scattering = singularity::photons::NonCGSUnitsS<singularity::photons::GrayS>(
+          singularity::photons::GrayS(kappa_s, apm), time_scale, mass_scale, length_scale,
+          temperature_scale);
+    } else {
+      PARTHENON_FAIL("Only none or constant scattering models supported!");
+    }
   }
   pkg->AddParam<>("scattering_model", scattering_model);
   pkg->AddParam<>("scattering_h", scattering);
+  pkg->AddParam<>("mscattering_h", mscattering);
 
   pkg->PreFillDerivedMesh = UpdateDerived;
 
@@ -290,9 +343,16 @@ Packages_t ProcessPackages(std::unique_ptr<ParameterInput> &pin) {
   packages.Add(mcblock::Initialize(pin.get()));
   auto &mcblock = packages.Get("mcblock");
   auto eos_h = mcblock->Param<EOS>("eos_h");
-  auto opacity_h = mcblock->Param<Opacity>("opacity_h");
-  auto scattering_h = mcblock->Param<Scattering>("scattering_h");
-  packages.Add(jaybenne::Initialize(pin.get(), opacity_h, scattering_h, eos_h));
+  auto frequency_type = mcblock->Param<FrequencyType>("frequency_type");
+  if (frequency_type == FrequencyType::gray) {
+    auto mopacity_h = mcblock->Param<MeanOpacity>("mopacity_h");
+    auto mscattering_h = mcblock->Param<MeanScattering>("mscattering_h");
+    packages.Add(jaybenne::Initialize(pin.get(), mopacity_h, mscattering_h, eos_h));
+  } else if (frequency_type == FrequencyType::multigroup) {
+    auto opacity_h = mcblock->Param<Opacity>("opacity_h");
+    auto scattering_h = mcblock->Param<Scattering>("scattering_h");
+    packages.Add(jaybenne::Initialize(pin.get(), opacity_h, scattering_h, eos_h));
+  }
   return packages;
 }
 
