@@ -29,8 +29,7 @@ namespace mcblock {
 
 // Model enums
 enum class InitialRadiation { none, thermal };
-enum class OpacityModel { none, constant, epbremss };
-enum class ScatteringModel { none, constant };
+enum class FrequencyType { gray, multigroup };
 
 std::shared_ptr<StateDescriptor> Initialize(ParameterInput *pin);
 void ProblemGenerator(MeshBlock *pmb, ParameterInput *pin);
