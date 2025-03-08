@@ -96,9 +96,9 @@ TaskStatus TransportPhotons(MeshData<Real> *md, const Real t_start, const Real d
 
           auto rng_gen = rng_pool.get_state();
           auto &coords = vmesh.GetCoordinates(b);
-          const Real &dx_i = coords.Dxc<X1DIR>(0, 0, 0);
-          const Real &dx_j = coords.Dxc<X2DIR>(0, 0, 0);
-          const Real &dx_k = coords.Dxc<X3DIR>(0, 0, 0);
+          const Real &dx_i = coords.template Dxc<parthenon::X1DIR>(0, 0, 0);
+          const Real &dx_j = coords.template Dxc<parthenon::X2DIR>(0, 0, 0);
+          const Real &dx_k = coords.template Dxc<parthenon::X3DIR>(0, 0, 0);
           const Real dx_push = std::min(dx_i, std::min(dx_j, dx_k));
 
           // Particle properties

@@ -160,6 +160,9 @@ TaskCollection RadiationStep(Mesh *pmesh, const Real t_start, const Real dt) {
 
     // Update fluid fields
     auto update_fluid = tl.AddTask(eval_rad, jaybenne::UpdateFluid, base.get());
+
+    // Control particle population
+    auto control_pop = tl.AddTask(update_fluid, jaybenne::ControlPopulation, base.get());
   }
 
   auto &timing_region1 = tc.AddRegion(1);
@@ -268,6 +271,10 @@ Initialize_impl(ParameterInput *pin, EOS &eos,
   pkg->AddField(field::jaybenne::source_ew_per_cell::name(), m_onecopy);
   pkg->AddField(field::jaybenne::source_num_per_cell::name(), m_onecopy);
   pkg->AddField(field::jaybenne::energy_delta::name(), m_onecopy);
+
+  // Population control fields
+  pkg->AddField(field::jaybenne::active_ew_per_cell::name(), m_onecopy);
+  pkg->AddField(field::jaybenne::active_num_per_cell::name(), m_onecopy);
 
   // Face-based radiation fields
   Metadata mface({Metadata::Face, Metadata::Derived, Metadata::FillGhost});
