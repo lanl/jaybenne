@@ -14,6 +14,7 @@
 #define JAYBENNE_JAYBENNE_HPP_
 
 // C/C++ includes
+#include <limits>
 #include <memory>
 #include <stdio.h>
 #include <stdlib.h>
@@ -50,17 +51,34 @@ namespace jaybenne {
 std::shared_ptr<parthenon::StateDescriptor> Initialize(parthenon::ParameterInput *pin,
                                                        Opacity &opacity,
                                                        Scattering &scattering, EOS &eos);
+std::shared_ptr<parthenon::StateDescriptor> Initialize(parthenon::ParameterInput *pin,
+                                                       MeanOpacity &mopacity,
+                                                       MeanScattering &mscattering,
+                                                       EOS &eos);
 
 // Model enums
 enum class SourceStrategy { uniform, energy };
 enum class SourceType { thermal, emission };
+enum class FrequencyType { gray, multigroup };
+
+// Initialization nulls
+template <typename T = Real>
+KOKKOS_FORCEINLINE_FUNCTION constexpr auto JaybenneNull() {
+  return std::numeric_limits<T>::quiet_NaN();
+}
+template <>
+KOKKOS_FORCEINLINE_FUNCTION constexpr auto JaybenneNull<int>() {
+  return std::numeric_limits<int>::max();
+}
 
 // Tasks
+template <FrequencyType FT>
 TaskStatus TransportPhotons(MeshData<Real> *md, const Real t_start, const Real dt);
+template <FrequencyType FT>
 TaskStatus TransportPhotons_DDMC(MeshData<Real> *md, const Real t_start, const Real dt);
 TaskStatus SampleDDMCBlockFace(MeshData<Real> *md);
 TaskStatus CheckCompletion(MeshData<Real> *md, const Real t_end);
-template <typename T, SourceType ST>
+template <typename T, SourceType ST, FrequencyType FT>
 TaskStatus SourcePhotons(T *md, const Real t_start, const Real dt);
 TaskStatus DefragParticles(MeshBlock *pmb);
 TaskStatus UpdateDerivedTransportFields(MeshData<Real> *md, const Real dt);

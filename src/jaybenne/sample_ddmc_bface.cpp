@@ -143,8 +143,8 @@ TaskStatus SampleDDMCBlockFace(MeshData<Real> *md) {
               swarm_d.Xtoijk(x, y, z, ip, jp, kp);
 
               auto &coords = vmesh.GetCoordinates(b);
-              const Real &dx_i = coords.DxcFA(X1DIR, 0, 0, 0);
-              const Real &dy_j = coords.DxcFA(X2DIR, 0, 0, 0);
+              const Real &dx_i = coords.Dxc<parthenon::X1DIR>(0, 0, 0);
+              const Real &dy_j = coords.Dxc<parthenon::X2DIR>(0, 0, 0);
               // low coordinates of particle's current cell
               const Real x_i = coords.Xc<parthenon::X1DIR>(ip) - 0.5 * dx_i;
               const Real y_j = coords.Xc<parthenon::X2DIR>(jp) - 0.5 * dy_j;
@@ -264,9 +264,9 @@ TaskStatus SampleDDMCBlockFace(MeshData<Real> *md) {
               swarm_d.Xtoijk(x, y, z, ip, jp, kp);
 
               auto &coords = vmesh.GetCoordinates(b);
-              const Real &dx_i = coords.DxcFA(X1DIR, 0, 0, 0);
-              const Real &dy_j = coords.DxcFA(X2DIR, 0, 0, 0);
-              const Real &dz_k = coords.DxcFA(X3DIR, 0, 0, 0);
+              const Real &dx_i = coords.Dxc<parthenon::X1DIR>(0, 0, 0);
+              const Real &dy_j = coords.Dxc<parthenon::X2DIR>(0, 0, 0);
+              const Real &dz_k = coords.Dxc<parthenon::X3DIR>(0, 0, 0);
               // low coordinates of particle's current cell
               const Real x_i = coords.Xc<parthenon::X1DIR>(ip) - 0.5 * dx_i;
               const Real y_j = coords.Xc<parthenon::X2DIR>(jp) - 0.5 * dy_j;

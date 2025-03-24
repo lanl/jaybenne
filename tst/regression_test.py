@@ -412,10 +412,10 @@ def analytic_comparison(
     print(f"Max fractional error:           {max_frac_error:.2e}")
 
     if args.comparison == "mean":
-        if mean_frac_error > tolerance:
+        if mean_frac_error > tolerance or np.isnan(mean_frac_error):
             success = False
     elif args.comparison == "weighted_mean":
-        if mean_frac_error_weighted > tolerance:
+        if mean_frac_error_weighted > tolerance or np.isnan(mean_frac_error):
             success = False
 
     if args.visualize:

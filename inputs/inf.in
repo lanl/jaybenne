@@ -58,13 +58,14 @@ source_strategy = uniform
 seed = 349857
 
 <mcblock>
+frequency_type = gray
 opacity_model = constant
 opacity_constant_value = 1.0 # cm^2/g
 scattering_model = constant
 scattering_constant_value = 1.0e5
 specific_heat = 1.0e8 # erg/K/g
 initial_density = 1.0 # g cm^-3
-initial_temperature = 1.0 # keV
+initial_temperature = 1.0e5 # K
 initial_radiation = thermal
 
 <parthenon/output0>

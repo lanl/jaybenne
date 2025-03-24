@@ -28,7 +28,6 @@ Currently supported computers/partitions are:
 
 ## Darwin
 
-    power9-rhel7
     volta-x86
     skylake-gold
 
@@ -92,5 +91,5 @@ of `jaybenne`.
 
 # Run driver executable
 
-    cd build/src
-    mpiexec -n 1 ./mcblock -i ../../prob/jbinput.stepdiff
+    cd build
+    mpiexec -n 1 ./mcblock -i ../inputs/stepdiff.in

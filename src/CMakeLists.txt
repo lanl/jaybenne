@@ -16,6 +16,7 @@
 # Set configuration values for jaybenne library to interface with host
 # NOTE(@pdmullen): Default values provided here are mcblock-specific
 if(JAYBENNE_STANDALONE_MODE)
+
   set(JAYBENNE_OPACITY_HEADER
       "../mcblock/opacity.hpp"
       CACHE STRING "Path to opacity header for library to use" FORCE)
@@ -31,6 +32,12 @@ if(JAYBENNE_STANDALONE_MODE)
   set(JAYBENNE_SCATTERING_OPACITY_TYPE
       "mcblock::Scattering"
       CACHE STRING "Namespace for scattering opacity Singularity type" FORCE)
+  set(JAYBENNE_ABSORPTION_MEAN_OPACITY_TYPE
+      "mcblock::MeanOpacity"
+      CACHE STRING "Namespace for absorption mean opacity Singularity type" FORCE)
+  set(JAYBENNE_SCATTERING_MEAN_OPACITY_TYPE
+      "mcblock::MeanScattering"
+      CACHE STRING "Namespace for scattering mean opacity Singularity type" FORCE)
   set(JAYBENNE_HOST_VARIABLE_HEADER
       "../mcblock/mcblock_variables.hpp"
       CACHE STRING "Path to host code variables header file" FORCE)
@@ -53,7 +60,13 @@ if(JAYBENNE_STANDALONE_MODE)
       "${CMAKE_CURRENT_SOURCE_DIR}/../external/singularity-eos/utils/ports-of-call"
       "${CMAKE_CURRENT_SOURCE_DIR}/../external/singularity-eos/utils/spiner"
       "${CMAKE_CURRENT_SOURCE_DIR}/../external/singularity-eos/utils/variant/include"
-      "${CMAKE_CURRENT_SOURCE_DIR}/../external/singularity-opac/utils")
+      "${CMAKE_CURRENT_SOURCE_DIR}/../external/singularity-opac/utils"
+      $<BUILD_INTERFACE:${CMAKE_BINARY_DIR}/generated>)
+
+  # singularity eos
+  message("Configuring singularity-eos for mcblock")
+  add_subdirectory(${CMAKE_SOURCE_DIR}/external/singularity-eos ${CMAKE_BINARY_DIR}/singularity-eos)
+
 endif()
 
 # Build jaybenne library
