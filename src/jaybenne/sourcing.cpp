@@ -63,8 +63,9 @@ TaskStatus SourcePhotons(T *md, const Real t_start, const Real dt) {
 
   // Create pack
   static auto desc =
-      MakePackDescriptor<fjh::density, fjh::sie, fj::fleck_factor, fj::source_ew_per_cell,
-                         fj::source_num_per_cell, fj::emission_cdf, fj::energy_delta>(
+      MakePackDescriptor<fjh::density, fjh::sie, fj::fleck_factor,
+                         fj::active_num_per_cell, fj::source_num_per_cell,
+                         fj::source_ew_per_cell, fj::emission_cdf, fj::energy_delta>(
           resolved_pkgs.get());
   auto vmesh = desc.GetPack(md);
 
@@ -146,9 +147,10 @@ TaskStatus SourcePhotons(T *md, const Real t_start, const Real dt) {
               }
               // Set source_num_per_cell
               Real &snpc = vmesh(b, fj::source_num_per_cell(), k, j, i);
+              Real &actnum = vmesh(b, fj::active_num_per_cell(), k, j, i);
               snpc = std::floor(npc);
-              snpc += ((npc - snpc) > rng_gen.drand());
-              ntot += static_cast<int>(std::round(snpc));
+              const Real pdiff = snpc - actnum;
+              ntot += static_cast<int>(pdiff);
               vmesh(b, fj::source_ew_per_cell(), k, j, i) = erad / snpc;
               rng_pool.free_state(rng_gen);
             },

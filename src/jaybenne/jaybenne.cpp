@@ -275,6 +275,7 @@ Initialize_impl(ParameterInput *pin, EOS &eos,
   // Population control fields
   pkg->AddField(field::jaybenne::active_ew_per_cell::name(), m_onecopy);
   pkg->AddField(field::jaybenne::active_num_per_cell::name(), m_onecopy);
+  pkg->AddField(field::jaybenne::old_active_ew_per_cell::name(), m_onecopy);
 
   // Face-based radiation fields
   Metadata mface({Metadata::Face, Metadata::Derived, Metadata::FillGhost});
