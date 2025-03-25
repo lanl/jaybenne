@@ -136,7 +136,7 @@ set(CMAKE_FIND_PACKAGE_NO_SYSTEM_PACKAGE_REGISTRY ON CACHE BOOL "" FORCE)
 message(STATUS "Patching mpark::variant to support GPUs")
 execute_process(COMMAND patch -N -s -V never
   ${CMAKE_CURRENT_SOURCE_DIR}/external/singularity-eos/utils/variant/include/mpark/variant.hpp
-  ${CMAKE_CURRENT_SOURCE_DIR}/external/singularity-eos/utils/cuda_compatibility.patch
+  ${CMAKE_CURRENT_SOURCE_DIR}/external/singularity-eos/utils/gpu_compatibility.patch
 )
 
 # TODO(BRR) The below may replace all manual includes... but there is some issue with

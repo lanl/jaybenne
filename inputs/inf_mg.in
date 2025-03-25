@@ -12,86 +12,60 @@
 # ========================================================================================
 
 <parthenon/job>
-problem_id = stepdiff
+problem_id = inf
 
 <parthenon/mesh>
-nghost = 2
-refinement = static
+refinement = none
 
-nx1 = 128
+nx1 = 4
 x1min = -0.5
 x1max = 0.5
-ix1_bc = outflow
-ox1_bc = outflow
+ix1_bc = periodic
+ox1_bc = periodic
 
-nx2 = 64
-x2min = -0.25
-x2max = 0.25
+nx2 = 1
+x2min = -0.5
+x2max = 0.5
 ix2_bc = periodic
 ox2_bc = periodic
 
 nx3 = 1
-x3min = -0.25
-x3max = 0.25
+x3min = -0.5
+x3max = 0.5
 ix3_bc = periodic
 ox3_bc = periodic
-
-<parthenon/swarm>
-ix1_bc = jaybenne_reflecting
-ox1_bc = jaybenne_reflecting
-ix2_bc = periodic
-ox2_bc = periodic
-ix3_bc = periodic
-ox3_bc = periodic
-
-<parthenon/meshblock>
-nx1 = 32
-nx2 = 32
-nx3 = 1
-
-<parthenon/static_refinement1>
-level = 1
-x1min = -0.25
-x1max = 0.25
-x2min = -0.25
-x2max = 0.25
-x3min = -0.25
-x3max = 0.25
 
 <parthenon/time>
-tlim = 3.335641e-10
+tlim = 1.e-10
 integrator = rk1
 
 <jaybenne>
-use_ddmc = true
-tau_ddmc = 2.5 # Typically 5 (the default), set to 2.5 here to enforce DDMC everywhere
-num_particles = 100000
-dt = 3.335641e-11
-numin = 1.e10
-numax = 1.e20
-do_emission = false
+num_particles = 1600
+dt = 1.e-11
+n_nubins = 16
+numin = 1.e11
+numax = 1.e16
+do_emission = true
 do_feedback = false
 transport_model = zone_size
 tracking_algo = history # event
 source_strategy = uniform
-seed = 349857
+seed = 349851
 
 <mcblock>
-frequency_type = gray
-opacity_model = none
+frequency_type = multigroup
+opacity_model = ep_bremss
 scattering_model = constant
-scattering_constant_value = 1.0e3
+scattering_constant_value = 1e-1
 specific_heat = 1.0e8 # erg/K/g
-initial_density = 1.0 # g cm^-3
+initial_density = 1.0e-5 # g cm^-3
 initial_temperature = 1.0e5 # K
 initial_radiation = thermal
 
 <parthenon/output0>
 file_type = hdf5
-dt = 3.335641e-10
+dt = 0.1
 variables = field.material.density,         &
             field.material.sie,             &
             field.material.internal_energy, &
             field.jaybenne.energy_tally
-swarms = photons
-swarm_variables = swarm.x, swarm.y

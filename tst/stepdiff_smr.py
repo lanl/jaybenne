@@ -49,17 +49,11 @@ def ur_solution(t, x, y, z):
 
 
 code = rt.analytic_comparison(
+    args=args,
     variables=["field.jaybenne.energy_tally"],
     solutions=[ur_solution],
-    input_file=args.input,
     modified_inputs=modified_inputs,
-    executable=args.executable,
-    use_mpiexec=args.use_mpiexec,
-    mpi_nthreads=args.mpi_nthreads,
-    build_type=args.build_type,
     tolerance=0.3,
-    cleanup=args.cleanup,
-    comparison=args.comparison,
 )
 
 sys.exit(code)

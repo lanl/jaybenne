@@ -71,6 +71,7 @@ TaskCollection RadiationStep(Mesh *pmesh, const Real t_start, const Real dt) {
   auto &jb_pkg = pmesh->packages.Get("jaybenne");
   const auto &max_transport_iterations = jb_pkg->Param<int>("max_transport_iterations");
   const bool &use_ddmc = jb_pkg->Param<bool>("use_ddmc");
+  const auto &fd = jb_pkg->Param<FrequencyType>("frequency_type");
 
   // MeshData subsets
   auto ddmc_field_names = std::vector<std::string>{fj::ddmc_face_prob::name()};
@@ -79,6 +80,16 @@ TaskCollection RadiationStep(Mesh *pmesh, const Real t_start, const Real dt) {
 
   TaskCollection tc;
   TaskID none(0);
+
+  auto &timing_region0 = tc.AddRegion(1);
+  {
+    auto &tl = timing_region0[0];
+    tl.AddTask(none, []() {
+      Kokkos::Profiling::pushRegion("Jaybenne::Timestep");
+      return TaskStatus::complete;
+    });
+  }
+
   const int num_partitions = pmesh->DefaultNumPartitions();
   PARTHENON_REQUIRE(
       num_partitions == 1,
@@ -92,26 +103,56 @@ TaskCollection RadiationStep(Mesh *pmesh, const Real t_start, const Real dt) {
 
     // prepare for iterative transport loop
     auto derived = tl.AddTask(none, UpdateDerivedTransportFields, base.get(), dt);
-    auto source = tl.AddTask(
-        derived, jaybenne::SourcePhotons<MeshData<Real>, jaybenne::SourceType::emission>,
-        base.get(), t_start, dt);
+    auto source = derived;
+    if (fd == FrequencyType::gray) {
+      source = tl.AddTask(
+          derived,
+          jaybenne::SourcePhotons<MeshData<Real>, jaybenne::SourceType::emission,
+                                  FrequencyType::gray>,
+          base.get(), t_start, dt);
+    } else if (fd == FrequencyType::multigroup) {
+      source = tl.AddTask(
+          derived,
+          jaybenne::SourcePhotons<MeshData<Real>, jaybenne::SourceType::emission,
+                                  FrequencyType::multigroup>,
+          base.get(), t_start, dt);
+    }
     auto bcs = use_ddmc ? parthenon::AddBoundaryExchangeTasks(source, tl, md_ddmc,
                                                               pmesh->multilevel)
                         : source;
 
     // keep pushing particles until there are none left
     auto [itl, push] = tl.AddSublist(bcs, {1, max_transport_iterations});
-    auto transport =
-        use_ddmc ? itl.AddTask(none, TransportPhotons_DDMC, base.get(), t_start, dt)
-                 : itl.AddTask(none, TransportPhotons, base.get(), t_start, dt);
+    auto time_start = itl.AddTask(none, []() {
+      Kokkos::Profiling::pushRegion("Jaybenne::TransportLoop");
+      return TaskStatus::complete;
+    });
+    auto transport = time_start;
+    if (fd == FrequencyType::gray) {
+      transport =
+          use_ddmc ? itl.AddTask(time_start, TransportPhotons_DDMC<FrequencyType::gray>,
+                                 base.get(), t_start, dt)
+                   : itl.AddTask(time_start, TransportPhotons<FrequencyType::gray>,
+                                 base.get(), t_start, dt);
+    } else if (fd == FrequencyType::multigroup) {
+      transport =
+          use_ddmc
+              ? itl.AddTask(time_start, TransportPhotons_DDMC<FrequencyType::multigroup>,
+                            base.get(), t_start, dt)
+              : itl.AddTask(time_start, TransportPhotons<FrequencyType::multigroup>,
+                            base.get(), t_start, dt);
+    }
     auto reset_comms = itl.AddTask(transport, MeshResetCommunication, base.get());
     auto send = itl.AddTask(reset_comms, MeshSend, base.get());
     auto receive = itl.AddTask(transport | send, MeshReceive, base.get());
     auto sample_ddmc_bface =
         use_ddmc ? itl.AddTask(receive, SampleDDMCBlockFace, base.get()) : receive;
-    auto complete =
-        itl.AddTask(TQ::once_per_region | TQ::global_sync | TQ::completion,
-                    sample_ddmc_bface, CheckCompletion, base.get(), t_start + dt);
+    auto time_stop = itl.AddTask(sample_ddmc_bface, []() {
+      Kokkos::Profiling::popRegion(/*Jaybenne::TransportLoop*/);
+      return TaskStatus::complete;
+    });
+    auto complete = itl.AddTask(TQ::once_per_region | TQ::global_sync | TQ::completion,
+                                time_stop, CheckCompletion, base.get(), t_start + dt);
 
     // Update radiation fields
     auto eval_rad =
@@ -121,17 +162,26 @@ TaskCollection RadiationStep(Mesh *pmesh, const Real t_start, const Real dt) {
     auto update_fluid = tl.AddTask(eval_rad, jaybenne::UpdateFluid, base.get());
   }
 
+  auto &timing_region1 = tc.AddRegion(1);
+  {
+    auto &tl = timing_region1[0];
+    tl.AddTask(none, []() {
+      Kokkos::Profiling::popRegion(/* Jaybenne::Timestep */);
+      return TaskStatus::complete;
+    });
+  }
+
   return tc;
 }
 
 //----------------------------------------------------------------------------------------
-//! \fn  StateDescriptor Jaybenne::Initialize
+//! \fn  StateDescriptor Jaybenne::Initialize_impl
 //! \brief Initialize the Jaybenne physics package. This function defines and sets the
 //! parameters associated with Jaybenne, and enrolls the data variables associated with
-//! this physics package.
-std::shared_ptr<StateDescriptor> Initialize(ParameterInput *pin, Opacity &opacity,
-                                            Scattering &scattering, EOS &eos,
-                                            std::string block_name) {
+//! this physics package, for everything not related to frequency discretization.
+std::shared_ptr<StateDescriptor>
+Initialize_impl(ParameterInput *pin, EOS &eos,
+                singularity::RuntimePhysicalConstants units, std::string block_name) {
   auto pkg = std::make_shared<StateDescriptor>("jaybenne");
 
   // Total number of particles
@@ -147,16 +197,11 @@ std::shared_ptr<StateDescriptor> Initialize(ParameterInput *pin, Opacity &opacit
                     "Minimum allowable swarm occupancy must be >= 0 and less than 1");
   pkg->AddParam<>("min_swarm_occupancy", min_swarm_occupancy);
 
-  // Frequency range
-  Real numin = pin->GetOrAddReal(block_name, "numin", std::numeric_limits<Real>::min());
-  pkg->AddParam<>("numin", numin);
-  Real numax = pin->GetOrAddReal(block_name, "numax", std::numeric_limits<Real>::max());
-  pkg->AddParam<>("numax", numax);
-
   // Physical constants
-  const auto units = opacity.GetRuntimePhysicalConstants();
+  // const auto units = opacity.GetRuntimePhysicalConstants();
   pkg->AddParam<>("speed_of_light", units.c);
   pkg->AddParam<>("stefan_boltzmann", units.sb);
+  pkg->AddParam<>("planck_constant", units.h);
 
   // RNG
   bool unique_rank_seeds = pin->GetOrAddBoolean(block_name, "unique_rank_seeds", true);
@@ -201,12 +246,6 @@ std::shared_ptr<StateDescriptor> Initialize(ParameterInput *pin, Opacity &opacit
   // Equation of state model
   pkg->AddParam<>("eos_d", eos.GetOnDevice());
 
-  // Opacity model
-  pkg->AddParam<>("opacity_d", opacity.GetOnDevice());
-
-  // Scattering model
-  pkg->AddParam<>("scattering_d", scattering.GetOnDevice());
-
   // Swarm and swarm variables
   Metadata swarm_metadata({Metadata::Provides, Metadata::None});
   pkg->AddSwarm(photons_swarm_name, swarm_metadata);
@@ -241,6 +280,68 @@ std::shared_ptr<StateDescriptor> Initialize(ParameterInput *pin, Opacity &opacit
 }
 
 //----------------------------------------------------------------------------------------
+//! \fn  StateDescriptor Jaybenne::Initialize
+//! \brief Initialize the Jaybenne physics package. This function defines and sets the
+//! parameters associated with Jaybenne, and enrolls the data variables associated with
+//! this physics package, specific to the gray frequency discretization.
+std::shared_ptr<StateDescriptor> Initialize(ParameterInput *pin, MeanOpacity &mopacity,
+                                            MeanScattering &mscattering, EOS &eos,
+                                            std::string block_name) {
+  const auto units = mopacity.GetRuntimePhysicalConstants();
+
+  auto pkg = Initialize_impl(pin, eos, units, block_name);
+
+  pkg->AddParam<>("frequency_type", FrequencyType::gray);
+
+  // Opacity model
+  pkg->AddParam<>("mopacity_d", mopacity.GetOnDevice());
+
+  // Scattering model
+  pkg->AddParam<>("mscattering_d", mscattering.GetOnDevice());
+
+  return pkg;
+}
+
+//----------------------------------------------------------------------------------------
+//! \fn  StateDescriptor Jaybenne::Initialize
+//! \brief Initialize the Jaybenne physics package. This function defines and sets the
+//! parameters associated with Jaybenne, and enrolls the data variables associated with
+//! this physics package, specific to the multigroup frequency discretization.
+std::shared_ptr<StateDescriptor> Initialize(ParameterInput *pin, Opacity &opacity,
+                                            Scattering &scattering, EOS &eos,
+                                            std::string block_name) {
+  const auto units = opacity.GetRuntimePhysicalConstants();
+
+  auto pkg = Initialize_impl(pin, eos, units, block_name);
+
+  PARTHENON_REQUIRE(pkg->Param<bool>("use_ddmc") == false,
+                    "DDMC not supported for multigroup currently!");
+
+  // Frequency discretization
+  auto time = units.time;
+  Real numin = pin->GetReal(block_name, "numin"); // in Hz
+  pkg->AddParam<>("numin", numin * time);         // in code units
+  Real numax = pin->GetReal(block_name, "numax"); // in Hz
+  pkg->AddParam<>("numax", numax * time);         // in code units
+  int n_nubins = pin->GetInteger(block_name, "n_nubins");
+  pkg->AddParam<>("n_nubins", n_nubins);
+
+  pkg->AddParam<>("frequency_type", FrequencyType::multigroup);
+
+  // Emission CDF
+  Metadata m_onecopy({Metadata::Cell, Metadata::OneCopy}, std::vector<int>({n_nubins}));
+  pkg->AddField(field::jaybenne::emission_cdf::name(), m_onecopy);
+
+  // Opacity model
+  pkg->AddParam<>("opacity_d", opacity.GetOnDevice());
+
+  // Scattering model
+  pkg->AddParam<>("scattering_d", scattering.GetOnDevice());
+
+  return pkg;
+}
+
+//----------------------------------------------------------------------------------------
 //! \fn  Real Jaybenne::EstimateTimestepMesh
 //! \brief Compute radiation timestep
 Real EstimateTimestepMesh(MeshData<Real> *md) {
@@ -250,14 +351,15 @@ Real EstimateTimestepMesh(MeshData<Real> *md) {
 }
 
 //----------------------------------------------------------------------------------------
-//! \fn  TaskStatus UpdateDerivedTransportFields
+//! \fn  TaskStatus UpdateDerivedTransportFieldsImpl
 //! \brief  fields set: Fleck factor, DDMC face probabilities
 //!         Fleck factor formula:
 //!         betaf = 4aT^3 / (rho * cv)
 //!         f = 1 / (1 + betaf * opacP * c * dt)
 //!         NOTE: if J = opacP * c * aR * T^4,
 //!               then f = 1 / (1 + 4 * J * dt / (rho * cv * T))
-TaskStatus UpdateDerivedTransportFields(MeshData<Real> *md, const Real dt) {
+template <FrequencyType FT>
+TaskStatus UpdateDerivedTransportFieldsImpl(MeshData<Real> *md, const Real dt) {
   namespace fj = field::jaybenne;
   namespace fjh = field::jaybenne::host;
 
@@ -265,7 +367,17 @@ TaskStatus UpdateDerivedTransportFields(MeshData<Real> *md, const Real dt) {
   auto &resolved_pkgs = pm->resolved_packages;
   auto &jbn = pm->packages.Get("jaybenne");
   auto &eos = jbn->Param<EOS>("eos_d");
-  auto &opacity = jbn->Param<Opacity>("opacity_d");
+  Opacity opacity;
+  Scattering scattering;
+  MeanOpacity mopacity;
+  MeanScattering mscattering;
+  if constexpr (FT == FrequencyType::gray) {
+    mopacity = jbn->Param<MeanOpacity>("mopacity_d");
+    mscattering = jbn->Param<MeanScattering>("mscattering_d");
+  } else if constexpr (FT == FrequencyType::multigroup) {
+    opacity = jbn->Param<Opacity>("opacity_d");
+    scattering = jbn->Param<Scattering>("scattering_d");
+  }
 
   const auto &ib = md->GetBoundsI(IndexDomain::interior);
   const auto &jb = md->GetBoundsJ(IndexDomain::interior);
@@ -285,7 +397,12 @@ TaskStatus UpdateDerivedTransportFields(MeshData<Real> *md, const Real dt) {
         const Real &sie = vmesh(b, fjh::sie(), k, j, i);
         const Real temp = eos.TemperatureFromDensityInternalEnergy(rho, sie);
         const Real cv = eos.SpecificHeatFromDensityInternalEnergy(rho, sie);
-        const Real emis = opacity.Emissivity(rho, temp);
+        Real emis = JaybenneNull<Real>();
+        if constexpr (FT == FrequencyType::gray) {
+          emis = mopacity.Emissivity(rho, temp);
+        } else if constexpr (FT == FrequencyType::multigroup) {
+          emis = opacity.Emissivity(rho, temp);
+        }
         vmesh(b, fj::fleck_factor(), k, j, i) =
             1.0 / (1.0 + (4.0 * emis / (rho * cv * temp)) * dt);
       });
@@ -294,17 +411,13 @@ TaskStatus UpdateDerivedTransportFields(MeshData<Real> *md, const Real dt) {
   const bool use_ddmc = jbn->Param<bool>("use_ddmc");
   if (use_ddmc) {
 
-    // TODO: what units do face-based prolongation-restriction operations assume?
-    // (Do the probabilities need to be divided by face area, for instance?)
+    PARTHENON_REQUIRE(FT == FrequencyType::gray, "DDMC only works in gray!");
 
     // define extrapolation distance (Habetler & Matkowski 1975)
     constexpr Real lam_ext = 0.7104;
 
     // get DDMC cell optical thickness threshold
     const Real tau_ddmc = jbn->Param<Real>("tau_ddmc");
-
-    // get scattering to calculate DDMC threshold
-    auto &scattering = jbn->Param<Scattering>("scattering_d");
 
     // calculate DDMC face probabilities in X1 direction
     const int iu = ib.e + 1;
@@ -314,12 +427,16 @@ TaskStatus UpdateDerivedTransportFields(MeshData<Real> *md, const Real dt) {
         iu, KOKKOS_LAMBDA(const int &b, const int &k, const int &j, const int &i) {
           // get coordinates of block
           auto &coords = vmesh.GetCoordinates(b);
-          const Real &dx_i = coords.DxcFA(parthenon::X1DIR, 0, 0, 0);
+          const Real &dx_i = coords.Dxc<parthenon::X1DIR>(0, 0, 0);
 
           // get current, lower, upper neighbor block levels in x-direction
           const Real rlev = static_cast<Real>(vmesh.GetLevel(b, 0, 0, 0));
-          const Real rlev_lx = static_cast<Real>(vmesh.GetLevel(b, 0, 0, -1));
-          const Real rlev_ux = static_cast<Real>(vmesh.GetLevel(b, 0, 0, 1));
+          const Real rlev_lx = (vmesh.IsPhysicalBoundary(b, 0, 0, -1))
+                                   ? rlev
+                                   : static_cast<Real>(vmesh.GetLevel(b, 0, 0, -1));
+          const Real rlev_ux = (vmesh.IsPhysicalBoundary(b, 0, 0, 1))
+                                   ? rlev
+                                   : static_cast<Real>(vmesh.GetLevel(b, 0, 0, 1));
 
           // calculate neighbor dx values
           const Real dx_lx = i == ib.s ? std::pow(2.0, rlev - rlev_lx) * dx_i : dx_i;
@@ -336,11 +453,22 @@ TaskStatus UpdateDerivedTransportFields(MeshData<Real> *md, const Real dt) {
           const Real &rho_u = vmesh(b, fjh::density(), k, j, i);
           const Real &sie_u = vmesh(b, fjh::sie(), k, j, i);
           const Real temp_u = eos.TemperatureFromDensityInternalEnergy(rho_u, sie_u);
-          // TODO: replace 3rd argument when this routine operates in multigroup
-          const Real ss_l = scattering.TotalScatteringCoefficient(rho_l, temp_l, 1.0);
-          const Real aa_l = opacity.AbsorptionCoefficient(rho_l, temp_l, 1.0);
-          const Real ss_u = scattering.TotalScatteringCoefficient(rho_u, temp_u, 1.0);
-          const Real aa_u = opacity.AbsorptionCoefficient(rho_u, temp_u, 1.0);
+          Real ss_l;
+          Real aa_l;
+          Real ss_u;
+          Real aa_u;
+          if constexpr (FT == FrequencyType::gray) {
+            ss_l = mscattering.RosselandMeanTotalScatteringCoefficient(rho_l, temp_l);
+            aa_l = mopacity.RosselandMeanAbsorptionCoefficient(rho_l, temp_l);
+            ss_u = mscattering.RosselandMeanTotalScatteringCoefficient(rho_u, temp_u);
+            aa_u = mopacity.RosselandMeanAbsorptionCoefficient(rho_u, temp_u);
+          } else if constexpr (FT == FrequencyType::multigroup) {
+            // TODO: replace 3rd argument when this routine operates in multigroup
+            ss_l = scattering.TotalScatteringCoefficient(rho_l, temp_l, 1.0);
+            aa_l = opacity.AbsorptionCoefficient(rho_l, temp_l, 1.0);
+            ss_u = scattering.TotalScatteringCoefficient(rho_u, temp_u, 1.0);
+            aa_u = opacity.AbsorptionCoefficient(rho_u, temp_u, 1.0);
+          }
 
           // calculate optical thicknesses from lower and upper cell
           Real tau_l = dx_lx * (ss_l + aa_l);
@@ -362,12 +490,16 @@ TaskStatus UpdateDerivedTransportFields(MeshData<Real> *md, const Real dt) {
           ib.e, KOKKOS_LAMBDA(const int &b, const int &k, const int &j, const int &i) {
             // get coordinates of block
             auto &coords = vmesh.GetCoordinates(b);
-            const Real &dx_j = coords.DxcFA(parthenon::X2DIR, 0, 0, 0);
+            const Real &dx_j = coords.Dxc<parthenon::X2DIR>(0, 0, 0);
 
             // get current, lower, upper neighbor block levels in x-direction
             const Real rlev = static_cast<Real>(vmesh.GetLevel(b, 0, 0, 0));
-            const Real rlev_ly = static_cast<Real>(vmesh.GetLevel(b, 0, -1, 0));
-            const Real rlev_uy = static_cast<Real>(vmesh.GetLevel(b, 0, 1, 0));
+            const Real rlev_ly = (vmesh.IsPhysicalBoundary(b, 0, -1, 0))
+                                     ? rlev
+                                     : static_cast<Real>(vmesh.GetLevel(b, 0, -1, 0));
+            const Real rlev_uy = (vmesh.IsPhysicalBoundary(b, 0, 1, 0))
+                                     ? rlev
+                                     : static_cast<Real>(vmesh.GetLevel(b, 0, 1, 0));
 
             // calculate neighbor dx values
             const Real dx_ly = j == jb.s ? std::pow(2.0, rlev - rlev_ly) * dx_j : dx_j;
@@ -383,11 +515,22 @@ TaskStatus UpdateDerivedTransportFields(MeshData<Real> *md, const Real dt) {
             const Real &rho_u = vmesh(b, fjh::density(), k, j, i);
             const Real &sie_u = vmesh(b, fjh::sie(), k, j, i);
             const Real temp_u = eos.TemperatureFromDensityInternalEnergy(rho_u, sie_u);
-            // TODO: replace 3rd argument when this routine operates in multigroup
-            const Real ss_l = scattering.TotalScatteringCoefficient(rho_l, temp_l, 1.0);
-            const Real aa_l = opacity.AbsorptionCoefficient(rho_l, temp_l, 1.0);
-            const Real ss_u = scattering.TotalScatteringCoefficient(rho_u, temp_u, 1.0);
-            const Real aa_u = opacity.AbsorptionCoefficient(rho_u, temp_u, 1.0);
+            Real ss_l;
+            Real aa_l;
+            Real ss_u;
+            Real aa_u;
+            if constexpr (FT == FrequencyType::gray) {
+              ss_l = mscattering.RosselandMeanTotalScatteringCoefficient(rho_l, temp_l);
+              aa_l = mopacity.RosselandMeanAbsorptionCoefficient(rho_l, temp_l);
+              ss_u = mscattering.RosselandMeanTotalScatteringCoefficient(rho_u, temp_u);
+              aa_u = mopacity.RosselandMeanAbsorptionCoefficient(rho_u, temp_u);
+            } else if constexpr (FT == FrequencyType::multigroup) {
+              // TODO: replace 3rd argument when this routine operates in multigroup
+              ss_l = scattering.TotalScatteringCoefficient(rho_l, temp_l, 1.0);
+              aa_l = opacity.AbsorptionCoefficient(rho_l, temp_l, 1.0);
+              ss_u = scattering.TotalScatteringCoefficient(rho_u, temp_u, 1.0);
+              aa_u = opacity.AbsorptionCoefficient(rho_u, temp_u, 1.0);
+            }
 
             // calculate optical thicknesses from lower and upper cell
             Real tau_l = dx_ly * (ss_l + aa_l);
@@ -411,12 +554,16 @@ TaskStatus UpdateDerivedTransportFields(MeshData<Real> *md, const Real dt) {
           ib.e, KOKKOS_LAMBDA(const int &b, const int &k, const int &j, const int &i) {
             // get coordinates of block
             auto &coords = vmesh.GetCoordinates(b);
-            const Real &dx_k = coords.DxcFA(parthenon::X3DIR, 0, 0, 0);
+            const Real &dx_k = coords.Dxc<parthenon::X3DIR>(0, 0, 0);
 
             // get current, lower, upper neighbor block levels in x-direction
             const Real rlev = static_cast<Real>(vmesh.GetLevel(b, 0, 0, 0));
-            const Real rlev_lz = static_cast<Real>(vmesh.GetLevel(b, -1, 0, 0));
-            const Real rlev_uz = static_cast<Real>(vmesh.GetLevel(b, 1, 0, 0));
+            const Real rlev_lz = (vmesh.IsPhysicalBoundary(b, -1, 0, 0))
+                                     ? rlev
+                                     : static_cast<Real>(vmesh.GetLevel(b, -1, 0, 0));
+            const Real rlev_uz = (vmesh.IsPhysicalBoundary(b, 1, 0, 0))
+                                     ? rlev
+                                     : static_cast<Real>(vmesh.GetLevel(b, 1, 0, 0));
 
             // calculate neighbor dx values
             const Real dx_lz = k == kb.s ? std::pow(2.0, rlev - rlev_lz) * dx_k : dx_k;
@@ -432,11 +579,22 @@ TaskStatus UpdateDerivedTransportFields(MeshData<Real> *md, const Real dt) {
             const Real &rho_u = vmesh(b, fjh::density(), k, j, i);
             const Real &sie_u = vmesh(b, fjh::sie(), k, j, i);
             const Real temp_u = eos.TemperatureFromDensityInternalEnergy(rho_u, sie_u);
-            // TODO: replace 3rd argument when this routine operates in multigroup
-            const Real ss_l = scattering.TotalScatteringCoefficient(rho_l, temp_l, 1.0);
-            const Real aa_l = opacity.AbsorptionCoefficient(rho_l, temp_l, 1.0);
-            const Real ss_u = scattering.TotalScatteringCoefficient(rho_u, temp_u, 1.0);
-            const Real aa_u = opacity.AbsorptionCoefficient(rho_u, temp_u, 1.0);
+            Real ss_l;
+            Real aa_l;
+            Real ss_u;
+            Real aa_u;
+            if constexpr (FT == FrequencyType::gray) {
+              ss_l = mscattering.RosselandMeanTotalScatteringCoefficient(rho_l, temp_l);
+              aa_l = mopacity.RosselandMeanAbsorptionCoefficient(rho_l, temp_l);
+              ss_u = mscattering.RosselandMeanTotalScatteringCoefficient(rho_u, temp_u);
+              aa_u = mopacity.RosselandMeanAbsorptionCoefficient(rho_u, temp_u);
+            } else if constexpr (FT == FrequencyType::multigroup) {
+              // TODO: replace 3rd argument when this routine operates in multigroup
+              ss_l = scattering.TotalScatteringCoefficient(rho_l, temp_l, 1.0);
+              aa_l = opacity.AbsorptionCoefficient(rho_l, temp_l, 1.0);
+              ss_u = scattering.TotalScatteringCoefficient(rho_u, temp_u, 1.0);
+              aa_u = opacity.AbsorptionCoefficient(rho_u, temp_u, 1.0);
+            }
 
             // calculate optical thicknesses from lower and upper cell
             Real tau_l = dx_lz * (ss_l + aa_l);
@@ -452,6 +610,27 @@ TaskStatus UpdateDerivedTransportFields(MeshData<Real> *md, const Real dt) {
   }
 
   return TaskStatus::complete;
+}
+
+//----------------------------------------------------------------------------------------
+//! \fn  TaskStatus UpdateDerivedTransportFieldsImpl
+//! \brief  fields set: Fleck factor, DDMC face probabilities
+//!         Fleck factor formula:
+//!         betaf = 4aT^3 / (rho * cv)
+//!         f = 1 / (1 + betaf * opacP * c * dt)
+//!         NOTE: if J = opacP * c * aR * T^4,
+//!               then f = 1 / (1 + 4 * J * dt / (rho * cv * T))
+TaskStatus UpdateDerivedTransportFields(MeshData<Real> *md, const Real dt) {
+  auto pm = md->GetParentPointer();
+  auto &jbn = pm->packages.Get("jaybenne");
+  auto &frequency_type = jbn->Param<FrequencyType>("frequency_type");
+  if (frequency_type == FrequencyType::gray) {
+    return UpdateDerivedTransportFieldsImpl<FrequencyType::gray>(md, dt);
+  } else if (frequency_type == FrequencyType::multigroup) {
+    return UpdateDerivedTransportFieldsImpl<FrequencyType::multigroup>(md, dt);
+  } else {
+    PARTHENON_FAIL("frequency_type not recognized!");
+  }
 }
 
 //----------------------------------------------------------------------------------------
@@ -514,10 +693,10 @@ TaskStatus EvaluateRadiationEnergy(T *md) {
         const auto &swarm_d = ppack_r.GetContext(b);
         if (swarm_d.IsActive(n)) {
           auto &coords = vmesh.GetCoordinates(b);
-          const Real &dv = coords.template Volume<TopologicalElement::CC>();
           const int &ip = ppack_i(b, ph::ijk(0), n);
           const int &jp = ppack_i(b, ph::ijk(1), n);
           const int &kp = ppack_i(b, ph::ijk(2), n);
+          const Real &dv = coords.CellVolume(kp, jp, ip);
           Kokkos::atomic_add(&vmesh(b, fj::energy_tally(), kp, jp, ip),
                              ppack_r(b, ph::weight(), n) / dv);
         }
@@ -531,9 +710,17 @@ TaskStatus EvaluateRadiationEnergy(T *md) {
 //! \brief Initialize radiation based on material temperature and either thermal or
 //!        zero initial radiation.
 void InitializeRadiation(MeshBlockData<Real> *mbd, const bool is_thermal) {
+  auto &jb_pkg = mbd->GetBlockPointer()->packages.Get("jaybenne");
+  const auto &fd = jb_pkg->Param<FrequencyType>("frequency_type");
+
   if (is_thermal) {
-    jaybenne::SourcePhotons<MeshBlockData<Real>, jaybenne::SourceType::thermal>(mbd, 0.0,
-                                                                                0.0);
+    if (fd == FrequencyType::gray) {
+      jaybenne::SourcePhotons<MeshBlockData<Real>, jaybenne::SourceType::thermal,
+                              FrequencyType::gray>(mbd, 0.0, 0.0);
+    } else if (fd == FrequencyType::multigroup) {
+      jaybenne::SourcePhotons<MeshBlockData<Real>, jaybenne::SourceType::thermal,
+                              FrequencyType::multigroup>(mbd, 0.0, 0.0);
+    }
   }
 
   // Call this so radiation field variables are properly initialized for outputs
@@ -568,7 +755,7 @@ TaskStatus UpdateFluid(MeshData<Real> *md) {
       kb.s, kb.e, jb.s, jb.e, ib.s, ib.e,
       KOKKOS_LAMBDA(const int &b, const int &k, const int &j, const int &i) {
         auto &coords = vmesh.GetCoordinates(b);
-        const Real &dv = coords.Volume<TopologicalElement::CC>();
+        const Real &dv = coords.CellVolume(k, j, i);
         Real &ee = vmesh(b, fjh::update_energy(), k, j, i);
         const Real delta = vmesh(b, fj::energy_delta(), k, j, i) / dv;
         ee += delta;
