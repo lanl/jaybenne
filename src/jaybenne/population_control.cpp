@@ -71,7 +71,6 @@ TaskStatus ControlPopulation(MeshData<Real> *md) {
         auto [b, n] = ppack_r.GetBlockParticleIndices(idx);
         const auto &swarm_d = ppack_r.GetContext(b);
         if (swarm_d.IsActive(n)) {
-
           // logical location and weight of particle
           const int &ip = ppack_i(b, ph::ijk(0), n);
           const int &jp = ppack_i(b, ph::ijk(1), n);

@@ -37,6 +37,7 @@ JAYBENNE_FIELD_VARIABLE(field.jaybenne, fleck_factor);
 JAYBENNE_FIELD_VARIABLE(field.jaybenne, ddmc_face_prob);
 JAYBENNE_FIELD_VARIABLE(field.jaybenne, source_ew_per_cell);
 JAYBENNE_FIELD_VARIABLE(field.jaybenne, source_num_per_cell);
+JAYBENNE_FIELD_VARIABLE(field.jaybenne, delta_num_per_cell);
 JAYBENNE_FIELD_VARIABLE(field.jaybenne, emission_cdf);
 JAYBENNE_FIELD_VARIABLE(field.jaybenne, energy_delta);
 JAYBENNE_FIELD_VARIABLE(field.jaybenne, active_ew_per_cell);
