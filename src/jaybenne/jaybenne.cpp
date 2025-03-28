@@ -270,11 +270,13 @@ Initialize_impl(ParameterInput *pin, EOS &eos,
   Metadata m_onecopy({Metadata::Cell, Metadata::OneCopy});
   pkg->AddField(field::jaybenne::source_ew_per_cell::name(), m_onecopy);
   pkg->AddField(field::jaybenne::source_num_per_cell::name(), m_onecopy);
+  pkg->AddField(field::jaybenne::delta_num_per_cell::name(), m_onecopy);
   pkg->AddField(field::jaybenne::energy_delta::name(), m_onecopy);
 
   // Population control fields
   pkg->AddField(field::jaybenne::active_ew_per_cell::name(), m_onecopy);
   pkg->AddField(field::jaybenne::active_num_per_cell::name(), m_onecopy);
+  pkg->AddField(field::jaybenne::old_active_ew_per_cell::name(), m_onecopy);
 
   // Face-based radiation fields
   Metadata mface({Metadata::Face, Metadata::Derived, Metadata::FillGhost});

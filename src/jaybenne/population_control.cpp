@@ -34,8 +34,10 @@ TaskStatus ControlPopulation(MeshData<Real> *md) {
   auto &rng_pool = jb_pkg->template Param<RngPool>("rng_pool");
 
   // Create SparsePack
-  static auto desc = MakePackDescriptor<fj::active_ew_per_cell, fj::active_num_per_cell,
-                                        fj::source_num_per_cell>(resolved_pkgs.get());
+  static auto desc =
+      MakePackDescriptor<fj::active_ew_per_cell, fj::active_num_per_cell,
+                         fj::old_active_ew_per_cell, fj::source_num_per_cell>(
+          resolved_pkgs.get());
   auto vmesh = desc.GetPack(md);
 
   // Create SwarmPacks
@@ -50,10 +52,6 @@ TaskStatus ControlPopulation(MeshData<Real> *md) {
   const auto &jb = md->GetBoundsJ(IndexDomain::interior);
   const auto &kb = md->GetBoundsK(IndexDomain::interior);
   const int &nblocks = vmesh.GetNBlocks();
-  const int nx1 = ib.e - ib.s + 1;
-  const int nx2 = jb.e - jb.s + 1;
-  const int nx3 = kb.e - kb.s + 1;
-  const int num_cells = nx1 * nx2 * nx3;
 
   //--------------------------------------------------------------------------------------
   // reset active particle count and energy weight per cell to 0
@@ -73,7 +71,6 @@ TaskStatus ControlPopulation(MeshData<Real> *md) {
         auto [b, n] = ppack_r.GetBlockParticleIndices(idx);
         const auto &swarm_d = ppack_r.GetContext(b);
         if (swarm_d.IsActive(n)) {
-
           // logical location and weight of particle
           const int &ip = ppack_i(b, ph::ijk(0), n);
           const int &jp = ppack_i(b, ph::ijk(1), n);
@@ -82,8 +79,8 @@ TaskStatus ControlPopulation(MeshData<Real> *md) {
 
           // add ew and 1 to active particle number at cell
           Real &actew = vmesh(b, fj::active_ew_per_cell(), kp, jp, ip);
-          Kokkos::atomic_add(&actew, ww);
           Real &actnum = vmesh(b, fj::active_num_per_cell(), kp, jp, ip);
+          Kokkos::atomic_add(&actew, ww);
           Kokkos::atomic_add(&actnum, 1.0);
         }
       });
@@ -96,7 +93,6 @@ TaskStatus ControlPopulation(MeshData<Real> *md) {
         auto [b, n] = ppack_r.GetBlockParticleIndices(idx);
         const auto &swarm_d = ppack_r.GetContext(b);
         if (swarm_d.IsActive(n)) {
-
           // logical location and weight of particle
           const int &ip = ppack_i(b, ph::ijk(0), n);
           const int &jp = ppack_i(b, ph::ijk(1), n);
@@ -129,33 +125,27 @@ TaskStatus ControlPopulation(MeshData<Real> *md) {
       parthenon::DevExecSpace(), 0, nblocks - 1, kb.s, kb.e, jb.s, jb.e, ib.s, ib.e,
       KOKKOS_LAMBDA(const int &b, const int &k, const int &j, const int &i) {
         vmesh(b, fj::active_num_per_cell(), k, j, i) = 0.0;
+        vmesh(b, fj::old_active_ew_per_cell(), k, j, i) = 0.0;
       });
 
   //--------------------------------------------------------------------------------------
   // store old active energy weight totals per cell, after particle removal
-  ParArray2D<Real> old_active_ew_per_cell("old active photon energy per cell per block",
-                                          nblocks, num_cells);
   parthenon::par_for(
       DEFAULT_LOOP_PATTERN, "ControlPopulation::store-old-active-ew", DevExecSpace(), 0,
       nparticles_per_pack, KOKKOS_LAMBDA(const int idx) {
         auto [b, n] = ppack_r.GetBlockParticleIndices(idx);
         const auto &swarm_d = ppack_r.GetContext(b);
         if (swarm_d.IsActive(n)) {
-
           // logical location and weight of particle
           const int &ip = ppack_i(b, ph::ijk(0), n);
           const int &jp = ppack_i(b, ph::ijk(1), n);
           const int &kp = ppack_i(b, ph::ijk(2), n);
           const Real &ww = ppack_r(b, ph::weight(), n);
 
-          // get serialized block-local cell index
-          const int cell_idx =
-              (kp - kb.s) * (nx1 * nx2) + (jp - jb.s) * nx1 + (ip - ib.s);
-
           // add ew and 1 to active particle number at cell
-          Real &actew = old_active_ew_per_cell(b, cell_idx);
-          Kokkos::atomic_add(&actew, ww);
+          Real &actew = vmesh(b, fj::old_active_ew_per_cell(), kp, jp, ip);
           Real &actnum = vmesh(b, fj::active_num_per_cell(), kp, jp, ip);
+          Kokkos::atomic_add(&actew, ww);
           Kokkos::atomic_add(&actnum, 1.0);
         }
       });
@@ -168,21 +158,14 @@ TaskStatus ControlPopulation(MeshData<Real> *md) {
         auto [b, n] = ppack_r.GetBlockParticleIndices(idx);
         const auto &swarm_d = ppack_r.GetContext(b);
         if (swarm_d.IsActive(n)) {
-
           // logical location and weight of particle
           const int &ip = ppack_i(b, ph::ijk(0), n);
           const int &jp = ppack_i(b, ph::ijk(1), n);
           const int &kp = ppack_i(b, ph::ijk(2), n);
-
-          // get serialized block-local cell index
-          const int cell_idx =
-              (kp - kb.s) * (nx1 * nx2) + (jp - jb.s) * nx1 + (ip - ib.s);
-
           Real &ww = ppack_r(b, ph::weight(), n);
 
+          const Real &oldactew = vmesh(b, fj::old_active_ew_per_cell(), kp, jp, ip);
           const Real &actew = vmesh(b, fj::active_ew_per_cell(), kp, jp, ip);
-          const Real &oldactew = old_active_ew_per_cell(b, cell_idx);
-
           PARTHENON_DEBUG_REQUIRE(oldactew > 0.0, "Particle in cell with 0 particles!");
           ww *= (actew / oldactew);
         }

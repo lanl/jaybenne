@@ -11,6 +11,9 @@
 // the public, perform publicly and display publicly, and to permit others to do so.
 //========================================================================================
 
+// C++ includes
+#include <limits>
+
 // Jaybenne includes
 #include "jaybenne.hpp"
 #include "jaybenne_utils.hpp"
@@ -63,8 +66,10 @@ TaskStatus SourcePhotons(T *md, const Real t_start, const Real dt) {
 
   // Create pack
   static auto desc =
-      MakePackDescriptor<fjh::density, fjh::sie, fj::fleck_factor, fj::source_ew_per_cell,
-                         fj::source_num_per_cell, fj::emission_cdf, fj::energy_delta>(
+      MakePackDescriptor<fjh::density, fjh::sie, fj::fleck_factor,
+                         fj::source_num_per_cell, fj::source_ew_per_cell,
+                         fj::delta_num_per_cell, fj::active_num_per_cell,
+                         fj::active_ew_per_cell, fj::emission_cdf, fj::energy_delta>(
           resolved_pkgs.get());
   auto vmesh = desc.GetPack(md);
 
@@ -79,8 +84,8 @@ TaskStatus SourcePhotons(T *md, const Real t_start, const Real dt) {
   const int nx2 = jb.e - jb.s + 1;
   const int nx3 = kb.e - kb.s + 1;
   const int num_cells = nx1 * nx2 * nx3;
-  const Real npc = static_cast<Real>(num_particles) / num_cells /
-                   (nblocks * md->GetMeshPointer()->nbtotal);
+  const Real npc = std::floor(static_cast<Real>(num_particles) /
+                              (num_cells * md->GetMeshPointer()->nbtotal));
 
   ParArray1D<int> nparticles("# particles per block", nblocks);
   ParArray2D<int> prefix_sum("prefix sums per block", nblocks, num_cells);
@@ -93,7 +98,6 @@ TaskStatus SourcePhotons(T *md, const Real t_start, const Real dt) {
         par_reduce_inner(
             member, kb.s, kb.e, jb.s, jb.e, ib.s, ib.e,
             [&](const int &k, const int &j, const int &i, int &ntot) {
-              auto rng_gen = rng_pool.get_state();
               // Compute erad
               const Real &rho = vmesh(b, fjh::density(), k, j, i);
               const Real &sie = vmesh(b, fjh::sie(), k, j, i);
@@ -144,13 +148,19 @@ TaskStatus SourcePhotons(T *md, const Real t_start, const Real dt) {
                 }
                 erad = vmesh(b, fj::fleck_factor(), k, j, i) * emis * dv * dtd;
               }
-              // Set source_num_per_cell
+
+              // Sourcing
               Real &snpc = vmesh(b, fj::source_num_per_cell(), k, j, i);
-              snpc = std::floor(npc);
-              snpc += ((npc - snpc) > rng_gen.drand());
-              ntot += static_cast<int>(std::round(snpc));
-              vmesh(b, fj::source_ew_per_cell(), k, j, i) = erad / snpc;
-              rng_pool.free_state(rng_gen);
+              Real &sewpc = vmesh(b, fj::source_ew_per_cell(), k, j, i);
+              Real &actnum = vmesh(b, fj::active_num_per_cell(), k, j, i);
+              Real &dnum = vmesh(b, fj::delta_num_per_cell(), k, j, i);
+              // NOTE(PDM): We hardcode snpc and sewpc below, but we could imagine
+              // introducing supplementary functions/tasks that set these, or even
+              // giving downstream codes the opportunity to set these themselves...
+              snpc = npc;
+              dnum = std::max(std::round((snpc > actnum) * (snpc - actnum)), 20.0);
+              sewpc = erad / dnum;
+              ntot += static_cast<int>(dnum);
             },
             Kokkos::Sum<int>(block_sum));
         Kokkos::single(Kokkos::PerTeam(member), [&]() { nparticles(b) = block_sum; });
@@ -162,8 +172,8 @@ TaskStatus SourcePhotons(T *md, const Real t_start, const Real dt) {
                                 int j = (idx / nx1) % nx2 + jb.s;
                                 int i = idx % nx1 + ib.s;
                                 if (finale) prefix_sum(b, idx) = update;
-                                update += static_cast<int>(std::round(
-                                    vmesh(b, fj::source_num_per_cell(), k, j, i)));
+                                update += static_cast<int>(
+                                    vmesh(b, fj::delta_num_per_cell(), k, j, i));
                               });
       });
   Kokkos::fence();
@@ -212,12 +222,12 @@ TaskStatus SourcePhotons(T *md, const Real t_start, const Real dt) {
 
         // Starting index and length of particles in this cell
         const int &pstart_idx = prefix_sum(b, cell_idx_1d);
-        const int num_part_per_cell =
-            static_cast<int>(std::round(vmesh(b, fj::source_num_per_cell(), k, j, i)));
+        const int new_part_per_cell =
+            static_cast<int>(vmesh(b, fj::delta_num_per_cell(), k, j, i));
 
         Real &dejbn = vmesh(b, fj::energy_delta(), k, j, i);
         dejbn = 0.0;
-        for (int np = pstart_idx; np < pstart_idx + num_part_per_cell; np++) {
+        for (int np = pstart_idx; np < pstart_idx + new_part_per_cell; np++) {
           const int &n = new_contexts(b).GetNewParticleIndex(np);
           ppack_i(b, ph::ijk(0), n) = i;
           ppack_i(b, ph::ijk(1), n) = j;
@@ -262,9 +272,9 @@ TaskStatus SourcePhotons(T *md, const Real t_start, const Real dt) {
           }
 
           if constexpr (ST == SourceType::emission) {
-            dejbn -= ppack_r(b, ph::weight(), n);
             // Sample uniformly over timestep
             ppack_r(b, ph::time(), n) = t_startd + rng_gen.drand() * dtd;
+            dejbn -= ppack_r(b, ph::weight(), n);
           } else {
             ppack_r(b, ph::time(), n) = 0.;
           }
@@ -278,25 +288,29 @@ TaskStatus SourcePhotons(T *md, const Real t_start, const Real dt) {
 
 //----------------------------------------------------------------------------------------
 //! template instantiations
-typedef MeshBlockData<Real> BD;
-typedef MeshData<Real> D;
-typedef SourceType ST;
-typedef FrequencyType FT;
-template TaskStatus SourcePhotons<BD, ST::thermal, FT::gray>(BD *md, const Real t0,
-                                                             const Real dt);
-template TaskStatus SourcePhotons<BD, ST::emission, FT::gray>(BD *md, const Real t0,
-                                                              const Real dt);
-template TaskStatus SourcePhotons<D, ST::thermal, FT::gray>(D *md, const Real t0,
-                                                            const Real dt);
-template TaskStatus SourcePhotons<D, ST::emission, FT::gray>(D *md, const Real t0,
-                                                             const Real dt);
-template TaskStatus SourcePhotons<BD, ST::thermal, FT::multigroup>(BD *md, const Real t0,
-                                                                   const Real dt);
-template TaskStatus SourcePhotons<BD, ST::emission, FT::multigroup>(BD *md, const Real t0,
-                                                                    const Real dt);
-template TaskStatus SourcePhotons<D, ST::thermal, FT::multigroup>(D *md, const Real t0,
-                                                                  const Real dt);
-template TaskStatus SourcePhotons<D, ST::emission, FT::multigroup>(D *md, const Real t0,
-                                                                   const Real dt);
+template TaskStatus
+SourcePhotons<MeshBlockData<Real>, SourceType::thermal, FrequencyType::gray>(
+    MeshBlockData<Real> *md, const Real t0, const Real dt);
+template TaskStatus
+SourcePhotons<MeshBlockData<Real>, SourceType::emission, FrequencyType::gray>(
+    MeshBlockData<Real> *md, const Real t0, const Real dt);
+template TaskStatus
+SourcePhotons<MeshData<Real>, SourceType::thermal, FrequencyType::gray>(
+    MeshData<Real> *md, const Real t0, const Real dt);
+template TaskStatus
+SourcePhotons<MeshData<Real>, SourceType::emission, FrequencyType::gray>(
+    MeshData<Real> *md, const Real t0, const Real dt);
+template TaskStatus
+SourcePhotons<MeshBlockData<Real>, SourceType::thermal, FrequencyType::multigroup>(
+    MeshBlockData<Real> *md, const Real t0, const Real dt);
+template TaskStatus
+SourcePhotons<MeshBlockData<Real>, SourceType::emission, FrequencyType::multigroup>(
+    MeshBlockData<Real> *md, const Real t0, const Real dt);
+template TaskStatus
+SourcePhotons<MeshData<Real>, SourceType::thermal, FrequencyType::multigroup>(
+    MeshData<Real> *md, const Real t0, const Real dt);
+template TaskStatus
+SourcePhotons<MeshData<Real>, SourceType::emission, FrequencyType::multigroup>(
+    MeshData<Real> *md, const Real t0, const Real dt);
 
 } // namespace jaybenne
