@@ -1,5 +1,5 @@
 //========================================================================================
-// (C) (or copyright) 2023-2024. Triad National Security, LLC. All rights reserved.
+// (C) (or copyright) 2023-2025. Triad National Security, LLC. All rights reserved.
 //
 // This program was produced under U.S. Government contract 89233218CNA000001 for Los
 // Alamos National Laboratory (LANL), which is operated by Triad National Security, LLC
@@ -37,8 +37,12 @@ JAYBENNE_FIELD_VARIABLE(field.jaybenne, fleck_factor);
 JAYBENNE_FIELD_VARIABLE(field.jaybenne, ddmc_face_prob);
 JAYBENNE_FIELD_VARIABLE(field.jaybenne, source_ew_per_cell);
 JAYBENNE_FIELD_VARIABLE(field.jaybenne, source_num_per_cell);
+JAYBENNE_FIELD_VARIABLE(field.jaybenne, delta_num_per_cell);
 JAYBENNE_FIELD_VARIABLE(field.jaybenne, emission_cdf);
 JAYBENNE_FIELD_VARIABLE(field.jaybenne, energy_delta);
+JAYBENNE_FIELD_VARIABLE(field.jaybenne, active_ew_per_cell);
+JAYBENNE_FIELD_VARIABLE(field.jaybenne, active_num_per_cell);
+JAYBENNE_FIELD_VARIABLE(field.jaybenne, old_active_ew_per_cell);
 namespace host {
 typedef HOST_DENSITY density;
 typedef HOST_SPECIFIC_INTERNAL_ENERGY sie;

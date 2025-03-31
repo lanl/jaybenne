@@ -1,5 +1,5 @@
 //========================================================================================
-// (C) (or copyright) 2023-2024. Triad National Security, LLC. All rights reserved.
+// (C) (or copyright) 2023-2025. Triad National Security, LLC. All rights reserved.
 //
 // This program was produced under U.S. Government contract 89233218CNA000001 for Los
 // Alamos National Laboratory (LANL), which is operated by Triad National Security, LLC
@@ -84,6 +84,7 @@ TaskStatus UpdateDerivedTransportFields(MeshData<Real> *md, const Real dt);
 template <typename T>
 TaskStatus EvaluateRadiationEnergy(T *md);
 TaskStatus UpdateFluid(MeshData<Real> *md);
+TaskStatus ControlPopulation(MeshData<Real> *md);
 
 // TaskCollection for radiation step
 TaskCollection RadiationStep(Mesh *pmesh, const Real t_start, const Real dt);

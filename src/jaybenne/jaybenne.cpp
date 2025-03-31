@@ -1,5 +1,5 @@
 //========================================================================================
-// (C) (or copyright) 2023-2024. Triad National Security, LLC. All rights reserved.
+// (C) (or copyright) 2023-2025. Triad National Security, LLC. All rights reserved.
 //
 // This program was produced under U.S. Government contract 89233218CNA000001 for Los
 // Alamos National Laboratory (LANL), which is operated by Triad National Security, LLC
@@ -160,6 +160,9 @@ TaskCollection RadiationStep(Mesh *pmesh, const Real t_start, const Real dt) {
 
     // Update fluid fields
     auto update_fluid = tl.AddTask(eval_rad, jaybenne::UpdateFluid, base.get());
+
+    // Control particle population
+    auto control_pop = tl.AddTask(update_fluid, jaybenne::ControlPopulation, base.get());
   }
 
   auto &timing_region1 = tc.AddRegion(1);
@@ -267,7 +270,13 @@ Initialize_impl(ParameterInput *pin, EOS &eos,
   Metadata m_onecopy({Metadata::Cell, Metadata::OneCopy});
   pkg->AddField(field::jaybenne::source_ew_per_cell::name(), m_onecopy);
   pkg->AddField(field::jaybenne::source_num_per_cell::name(), m_onecopy);
+  pkg->AddField(field::jaybenne::delta_num_per_cell::name(), m_onecopy);
   pkg->AddField(field::jaybenne::energy_delta::name(), m_onecopy);
+
+  // Population control fields
+  pkg->AddField(field::jaybenne::active_ew_per_cell::name(), m_onecopy);
+  pkg->AddField(field::jaybenne::active_num_per_cell::name(), m_onecopy);
+  pkg->AddField(field::jaybenne::old_active_ew_per_cell::name(), m_onecopy);
 
   // Face-based radiation fields
   Metadata mface({Metadata::Face, Metadata::Derived, Metadata::FillGhost});
