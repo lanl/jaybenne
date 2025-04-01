@@ -93,6 +93,8 @@ TaskStatus ControlPopulation(MeshData<Real> *md) {
         auto [b, n] = ppack_r.GetBlockParticleIndices(idx);
         const auto &swarm_d = ppack_r.GetContext(b);
         if (swarm_d.IsActive(n)) {
+          auto rng_gen = rng_pool.get_state();
+
           // logical location and weight of particle
           const int &ip = ppack_i(b, ph::ijk(0), n);
           const int &jp = ppack_i(b, ph::ijk(1), n);
@@ -103,12 +105,12 @@ TaskStatus ControlPopulation(MeshData<Real> *md) {
           const Real &srcnum = vmesh(b, fj::source_num_per_cell(), kp, jp, ip);
           // TODO: fix this arbitrary hard-coded threshold
           if (actnum > 4 * srcnum) {
-            auto rng_gen = rng_pool.get_state();
             const Real rand = rng_gen.drand();
             if (rand * actnum < actnum - 4 * srcnum) {
               swarm_d.MarkParticleForRemoval(n);
             }
           }
+          rng_pool.free_state(rng_gen);
         }
       });
 

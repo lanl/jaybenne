@@ -105,8 +105,8 @@ TaskStatus SourcePhotons(T *md, const Real t_start, const Real dt) {
               [[maybe_unused]] const Real &sbd = sb;
               [[maybe_unused]] const Real &vvd = vv;
               [[maybe_unused]] const Real &dtd = dt;
-              [[maybe_unused]] auto opac = opacity;
               [[maybe_unused]] auto mopac = mopacity;
+              [[maybe_unused]] auto opac = opacity;
               [[maybe_unused]] const auto numind = numin;
               [[maybe_unused]] const auto numaxd = numax;
               [[maybe_unused]] const auto n_nubinsd = n_nubins;
@@ -201,6 +201,7 @@ TaskStatus SourcePhotons(T *md, const Real t_start, const Real dt) {
       DEFAULT_LOOP_PATTERN, "SourcePhotons2", parthenon::DevExecSpace(), 0, nblocks - 1,
       kb.s, kb.e, jb.s, jb.e, ib.s, ib.e,
       KOKKOS_LAMBDA(const int &b, const int &k, const int &j, const int &i) {
+        auto rng_gen = rng_pool.get_state();
         auto &coords = vmesh.GetCoordinates(b);
         const Real &xi = coords.template Xc<X1DIR>(i);
         const Real &yi = coords.template Xc<X2DIR>(j);
@@ -212,7 +213,7 @@ TaskStatus SourcePhotons(T *md, const Real t_start, const Real dt) {
         const Real y_min = coords.template Xc<parthenon::X2DIR>(jb.s) - 0.5 * dx_j;
         const Real z_min = coords.template Xc<parthenon::X3DIR>(kb.s) - 0.5 * dx_k;
         const int cell_idx_1d = (k - kb.s) * (nx1 * nx2) + (j - jb.s) * nx1 + (i - ib.s);
-        auto rng_gen = rng_pool.get_state();
+        [[maybe_unused]] const Real &sbd = sb;
         [[maybe_unused]] const Real &dtd = dt;
         [[maybe_unused]] const Real &t_startd = t_start;
         [[maybe_unused]] const Real hd = h;
@@ -256,7 +257,7 @@ TaskStatus SourcePhotons(T *md, const Real t_start, const Real dt) {
           const Real &sie = vmesh(b, fjh::sie(), k, j, i);
           const Real temp = eos.TemperatureFromDensityInternalEnergy(rho, sie);
           if constexpr (FT == FrequencyType::gray) {
-            ppack_r(b, ph::energy(), n) = sample_Planck_energy(rng_gen, sb, temp);
+            ppack_r(b, ph::energy(), n) = sample_Planck_energy(rng_gen, sbd, temp);
           } else if constexpr (FT == FrequencyType::multigroup) {
             // Sample energy from CDF
             const Real rand = rng_gen.drand();

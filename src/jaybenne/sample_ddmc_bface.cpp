@@ -1,5 +1,5 @@
 //========================================================================================
-// (C) (or copyright) 2024. Triad National Security, LLC. All rights reserved.
+// (C) (or copyright) 2024-2025. Triad National Security, LLC. All rights reserved.
 //
 // This program was produced under U.S. Government contract 89233218CNA000001 for Los
 // Alamos National Laboratory (LANL), which is operated by Triad National Security, LLC
@@ -91,8 +91,8 @@ TaskStatus SampleDDMCBlockFace(MeshData<Real> *md) {
 
   auto &resolved_pkgs = pm->resolved_packages;
   auto &jb_pkg = pm->packages.Get("jaybenne");
-  auto &rng_pool = jb_pkg->Param<RngPool>("rng_pool");
-  const Real vv = jb_pkg->Param<Real>("speed_of_light");
+  auto &rng_pool = jb_pkg->template Param<RngPool>("rng_pool");
+  const Real vv = jb_pkg->template Param<Real>("speed_of_light");
 
   // get dimension indicators (for face probabilities)
   const bool multi_d = (pm->ndim > 1);
@@ -123,6 +123,7 @@ TaskStatus SampleDDMCBlockFace(MeshData<Real> *md) {
           auto [b, n] = ppack_r.GetBlockParticleIndices(idx);
           const auto &swarm_d = ppack_r.GetContext(b);
           if (swarm_d.IsActive(n)) {
+            auto rng_gen = rng_pool.get_state();
 
             Real &vx = ppack_r(b, ph::v(0), n);
             Real &vy = ppack_r(b, ph::v(1), n);
@@ -130,7 +131,6 @@ TaskStatus SampleDDMCBlockFace(MeshData<Real> *md) {
 
             // speed, direction were set to 0 if particle was DDMC and moved off block
             if (vx * vx + vy * vy + vz * vz < eps * vv * vv) {
-
               // get particle coordinate, and stale cell index
               Real &x = ppack_r(b, sp::x(), n);
               Real &y = ppack_r(b, sp::y(), n);
@@ -148,9 +148,6 @@ TaskStatus SampleDDMCBlockFace(MeshData<Real> *md) {
               // low coordinates of particle's current cell
               const Real x_i = coords.Xc<parthenon::X1DIR>(ip) - 0.5 * dx_i;
               const Real y_j = coords.Xc<parthenon::X2DIR>(jp) - 0.5 * dy_j;
-
-              // get rng state for face and direction sampling
-              auto rng_gen = rng_pool.get_state();
 
               // check particle proximity to block faces
               // if DDMC moves particle eps_ddmc_offset coarse cell dx then
@@ -223,8 +220,6 @@ TaskStatus SampleDDMCBlockFace(MeshData<Real> *md) {
                 }
               }
 
-              rng_pool.free_state(rng_gen);
-
               // Check particle is still on block
               PARTHENON_DEBUG_REQUIRE(x >= swarm_d.x_min_ || x <= swarm_d.x_max_,
                                       "Particle sampled outside of meshblock!");
@@ -233,6 +228,7 @@ TaskStatus SampleDDMCBlockFace(MeshData<Real> *md) {
               PARTHENON_DEBUG_REQUIRE(z >= swarm_d.z_min_ || z <= swarm_d.z_max_,
                                       "Particle sampled outside of meshblock!");
             }
+            rng_pool.free_state(rng_gen);
           }
         });
   } else {
@@ -244,6 +240,7 @@ TaskStatus SampleDDMCBlockFace(MeshData<Real> *md) {
           auto [b, n] = ppack_r.GetBlockParticleIndices(idx);
           const auto &swarm_d = ppack_r.GetContext(b);
           if (swarm_d.IsActive(n)) {
+            auto rng_gen = rng_pool.get_state();
 
             Real &vx = ppack_r(b, ph::v(0), n);
             Real &vy = ppack_r(b, ph::v(1), n);
@@ -251,7 +248,6 @@ TaskStatus SampleDDMCBlockFace(MeshData<Real> *md) {
 
             // speed, direction were set to 0 if particle was DDMC and moved off block
             if (vx * vx + vy * vy + vz * vz < eps * vv * vv) {
-
               // get particle coordinate, and (stale?) cell index
               Real &x = ppack_r(b, sp::x(), n);
               Real &y = ppack_r(b, sp::y(), n);
@@ -271,9 +267,6 @@ TaskStatus SampleDDMCBlockFace(MeshData<Real> *md) {
               const Real x_i = coords.Xc<parthenon::X1DIR>(ip) - 0.5 * dx_i;
               const Real y_j = coords.Xc<parthenon::X2DIR>(jp) - 0.5 * dy_j;
               const Real z_k = coords.Xc<parthenon::X3DIR>(kp) - 0.5 * dz_k;
-
-              // get rng state for face and direction sampling
-              auto rng_gen = rng_pool.get_state();
 
               // check particle proximity to block faces
               // if DDMC moves particle eps_ddmc_offset coarse cell dx then
@@ -409,8 +402,6 @@ TaskStatus SampleDDMCBlockFace(MeshData<Real> *md) {
                 }
               }
 
-              rng_pool.free_state(rng_gen);
-
               // Check particle is still on block
               PARTHENON_DEBUG_REQUIRE(x >= swarm_d.x_min_ || x <= swarm_d.x_max_,
                                       "Particle sampled outside of meshblock!");
@@ -419,6 +410,7 @@ TaskStatus SampleDDMCBlockFace(MeshData<Real> *md) {
               PARTHENON_DEBUG_REQUIRE(z >= swarm_d.z_min_ || z <= swarm_d.z_max_,
                                       "Particle sampled outside of meshblock!");
             }
+            rng_pool.free_state(rng_gen);
           }
         });
   }
