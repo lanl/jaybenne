@@ -1,5 +1,5 @@
 //========================================================================================
-// (C) (or copyright) 2023-2024. Triad National Security, LLC. All rights reserved.
+// (C) (or copyright) 2023-2025. Triad National Security, LLC. All rights reserved.
 //
 // This program was produced under U.S. Government contract 89233218CNA000001 for Los
 // Alamos National Laboratory (LANL), which is operated by Triad National Security, LLC
@@ -212,10 +212,11 @@ void ProblemGenerator(MeshBlock *pmb, ParameterInput *pin) {
   auto &resolved_pkgs = pmb->resolved_packages;
 
   auto &mcb = pmb->packages.Get("mcblock");
-  const Real &rho0 = mcb->Param<Real>("initial_density");
-  const Real &tt0 = mcb->Param<Real>("initial_temperature");
-  const auto &initial_radiation = mcb->Param<InitialRadiation>("initial_radiation");
-  auto eos = mcb->Param<EOS>("eos_d");
+  const Real &rho0 = mcb->template Param<Real>("initial_density");
+  const Real &tt0 = mcb->template Param<Real>("initial_temperature");
+  const auto &initial_radiation =
+      mcb->template Param<InitialRadiation>("initial_radiation");
+  auto eos = mcb->template Param<EOS>("eos_d");
 
   // Create SparsePack
   static auto desc = MakePackDescriptor<fm::density, fm::sie>(resolved_pkgs.get());
@@ -236,7 +237,7 @@ void ProblemGenerator(MeshBlock *pmb, ParameterInput *pin) {
         vmesh(b, fm::sie(), k, j, i) = cv * tt0;
       });
 
-  const auto problem_id = mcb->Param<std::string>("problem_id");
+  const auto problem_id = mcb->template Param<std::string>("problem_id");
   if (problem_id == "stepdiff") {
     parthenon::par_for(
         DEFAULT_LOOP_PATTERN, "Initialize stepdiff", parthenon::DevExecSpace(), 0,
@@ -342,15 +343,15 @@ Packages_t ProcessPackages(std::unique_ptr<ParameterInput> &pin) {
   Packages_t packages;
   packages.Add(mcblock::Initialize(pin.get()));
   auto &mcblock = packages.Get("mcblock");
-  auto eos_h = mcblock->Param<EOS>("eos_h");
-  auto frequency_type = mcblock->Param<FrequencyType>("frequency_type");
+  auto eos_h = mcblock->template Param<EOS>("eos_h");
+  auto frequency_type = mcblock->template Param<FrequencyType>("frequency_type");
   if (frequency_type == FrequencyType::gray) {
-    auto mopacity_h = mcblock->Param<MeanOpacity>("mopacity_h");
-    auto mscattering_h = mcblock->Param<MeanScattering>("mscattering_h");
+    auto mopacity_h = mcblock->template Param<MeanOpacity>("mopacity_h");
+    auto mscattering_h = mcblock->template Param<MeanScattering>("mscattering_h");
     packages.Add(jaybenne::Initialize(pin.get(), mopacity_h, mscattering_h, eos_h));
   } else if (frequency_type == FrequencyType::multigroup) {
-    auto opacity_h = mcblock->Param<Opacity>("opacity_h");
-    auto scattering_h = mcblock->Param<Scattering>("scattering_h");
+    auto opacity_h = mcblock->template Param<Opacity>("opacity_h");
+    auto scattering_h = mcblock->template Param<Scattering>("scattering_h");
     packages.Add(jaybenne::Initialize(pin.get(), opacity_h, scattering_h, eos_h));
   }
   return packages;

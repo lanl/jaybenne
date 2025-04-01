@@ -87,6 +87,7 @@ TaskStatus TransportPhotons(MeshData<Real> *md, const Real t_start, const Real d
         auto [b, n] = ppack_r.GetBlockParticleIndices(idx);
         const auto &swarm_d = ppack_r.GetContext(b);
         if (swarm_d.IsActive(n)) {
+          auto rng_gen = rng_pool.get_state();
 
           // frequency data, needed for multigroup
           [[maybe_unused]] const auto hd = h;
@@ -94,7 +95,6 @@ TaskStatus TransportPhotons(MeshData<Real> *md, const Real t_start, const Real d
           [[maybe_unused]] const auto numaxd = numax;
           [[maybe_unused]] const auto n_nubinsd = n_nubins;
 
-          auto rng_gen = rng_pool.get_state();
           auto &coords = vmesh.GetCoordinates(b);
           const Real &dx_i = coords.template Dxc<parthenon::X1DIR>(0, 0, 0);
           const Real &dx_j = coords.template Dxc<parthenon::X2DIR>(0, 0, 0);
@@ -149,13 +149,17 @@ TaskStatus TransportPhotons(MeshData<Real> *md, const Real t_start, const Real d
             const Real &ff = vmesh(b, fj::fleck_factor(), kp, jp, ip);
             Real ss = JaybenneNull<Real>();
             Real aa = JaybenneNull<Real>();
+            [[maybe_unused]] auto mopac = mopacity;
+            [[maybe_unused]] auto mscatter = mscattering;
+            [[maybe_unused]] auto opac = opacity;
+            [[maybe_unused]] auto scatter = scattering;
             if constexpr (FT == FrequencyType::gray) {
               // TODO: use TotalScatteringCoefficient(rho, temp), when available
-              ss = mscattering.RosselandMeanTotalScatteringCoefficient(rho, temp);
-              aa = mopacity.AbsorptionCoefficient(rho, temp);
+              ss = mscatter.RosselandMeanTotalScatteringCoefficient(rho, temp);
+              aa = mopac.AbsorptionCoefficient(rho, temp);
             } else if constexpr (FT == FrequencyType::multigroup) {
-              ss = scattering.TotalScatteringCoefficient(rho, temp, ee);
-              aa = opacity.AbsorptionCoefficient(rho, temp, ee);
+              ss = scatter.TotalScatteringCoefficient(rho, temp, ee);
+              aa = opac.AbsorptionCoefficient(rho, temp, ee);
             }
 
             // reset collision indicators
@@ -197,11 +201,10 @@ TaskStatus TransportPhotons(MeshData<Real> *md, const Real t_start, const Real d
             if (is_scattered) {
               // process scattering
               // TODO(BRR): template on scattering model
-              scatter(rng_gen, vv, vx, vy, vz);
+              ScatterKernel(rng_gen, vv, vx, vy, vz);
 
               // if multigroup eff scatter, redistribute frequency
               if constexpr (FT == FrequencyType::multigroup) {
-
                 // sample whether effective scattering occurred
                 const Real rand1 = rng_gen.drand();
                 if (rand1 * ((1.0 - ff) * aa + ss) < (1.0 - ff) * aa) {

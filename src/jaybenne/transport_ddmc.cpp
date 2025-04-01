@@ -226,7 +226,7 @@ TaskStatus TransportPhotons_DDMC(MeshData<Real> *md, const Real t_start, const R
               // process scattering
               // TODO(BRR): if eff scatter, redistribute frequency
               // TODO(BRR): template on scattering model
-              scatter(rng_gen, vv, vx, vy, vz);
+              ScatterKernel(rng_gen, vv, vx, vy, vz);
             }
           }
           rng_pool.free_state(rng_gen);
