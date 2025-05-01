@@ -112,20 +112,20 @@ std::shared_ptr<StateDescriptor> Initialize(ParameterInput *pin) {
       mopacity =
           singularity::photons::MeanNonCGSUnits<singularity::photons::MeanOpacityBase>(
               singularity::photons::MeanOpacityBase(opac, -1, 1, 2, -1, 1, 2), time_scale,
-              mass_scale, length_scale, 1.);
+              mass_scale, length_scale, temperature_scale);
     } else if (opacity_model == "constant") {
       Real kappa = pin->GetReal("mcblock", "opacity_constant_value");
       auto opac = singularity::photons::Gray(kappa);
       mopacity =
           singularity::photons::MeanNonCGSUnits<singularity::photons::MeanOpacityBase>(
               singularity::photons::MeanOpacityBase(opac, -1, 1, 2, -1, 1, 2), time_scale,
-              mass_scale, length_scale, 1.);
+              mass_scale, length_scale, temperature_scale);
     } else if (opacity_model == "table") {
       std::string table_filename = pin->GetString("mcblock", "opacity_table");
       mopacity =
           singularity::photons::MeanNonCGSUnits<singularity::photons::MeanOpacityBase>(
               singularity::photons::MeanOpacityBase(table_filename), time_scale,
-              mass_scale, length_scale, 1.);
+              mass_scale, length_scale, temperature_scale);
     } else {
       PARTHENON_FAIL("Only none, constant, or table opacity models supported!");
     }

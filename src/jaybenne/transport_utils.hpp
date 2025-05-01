@@ -148,15 +148,16 @@ void ptcl_transport_step(tran_step_args tra) {
   tra.z += tra.three_d * tra.vz * dt_push;
 
   // handle faces
+  const bool leave = !(tra.is_absorbed || tra.is_scattered);
   const Real fdx = eps_imc_offset * (tra.xu - tra.xl);
   const Real fdy = eps_imc_offset * (tra.yu - tra.yl);
   const Real fdz = eps_imc_offset * (tra.zu - tra.zl);
-  tra.x = (std::abs(tra.x - tra.xl) < fdx) ? tra.xl - fdx : tra.x;
-  tra.x = (std::abs(tra.x - tra.xu) < fdx) ? tra.xu + fdx : tra.x;
-  tra.y = (tra.multi_d && std::abs(tra.y - tra.yl) < fdy) ? tra.yl - fdy : tra.y;
-  tra.y = (tra.multi_d && std::abs(tra.y - tra.yu) < fdy) ? tra.yu + fdy : tra.y;
-  tra.z = (tra.three_d && std::abs(tra.z - tra.zl) < fdz) ? tra.zl - fdz : tra.z;
-  tra.z = (tra.three_d && std::abs(tra.z - tra.zu) < fdz) ? tra.zu + fdz : tra.z;
+  tra.x = (std::abs(tra.x - tra.xl) < fdx && leave) ? tra.xl - fdx : tra.x;
+  tra.x = (std::abs(tra.x - tra.xu) < fdx && leave) ? tra.xu + fdx : tra.x;
+  tra.y = (tra.multi_d && std::abs(tra.y - tra.yl) < fdy && leave) ? tra.yl - fdy : tra.y;
+  tra.y = (tra.multi_d && std::abs(tra.y - tra.yu) < fdy && leave) ? tra.yu + fdy : tra.y;
+  tra.z = (tra.three_d && std::abs(tra.z - tra.zl) < fdz && leave) ? tra.zl - fdz : tra.z;
+  tra.z = (tra.three_d && std::abs(tra.z - tra.zu) < fdz && leave) ? tra.zu + fdz : tra.z;
 }
 
 // TODO(RTW): add effective out-scattering from DDMC when multigroup is enabled
