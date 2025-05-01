@@ -108,18 +108,14 @@ std::shared_ptr<StateDescriptor> Initialize(ParameterInput *pin) {
   std::string opacity_model = pin->GetString("mcblock", "opacity_model");
   if (frequency_type == FrequencyType::gray) {
     if (opacity_model == "none") {
-      auto opac = singularity::photons::NonCGSUnits<singularity::photons::Gray>(
-          singularity::photons::Gray(1.e-100), time_scale, mass_scale, length_scale,
-          temperature_scale);
+      auto opac = singularity::photons::Gray(1.e-100);
       mopacity =
           singularity::photons::MeanNonCGSUnits<singularity::photons::MeanOpacityBase>(
               singularity::photons::MeanOpacityBase(opac, -1, 1, 2, -1, 1, 2), time_scale,
               mass_scale, length_scale, temperature_scale);
     } else if (opacity_model == "constant") {
       Real kappa = pin->GetReal("mcblock", "opacity_constant_value");
-      auto opac = singularity::photons::NonCGSUnits<singularity::photons::Gray>(
-          singularity::photons::Gray(kappa), time_scale, mass_scale, length_scale,
-          temperature_scale);
+      auto opac = singularity::photons::Gray(kappa);
       mopacity =
           singularity::photons::MeanNonCGSUnits<singularity::photons::MeanOpacityBase>(
               singularity::photons::MeanOpacityBase(opac, -1, 1, 2, -1, 1, 2), time_scale,
