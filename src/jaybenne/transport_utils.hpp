@@ -48,9 +48,9 @@ struct tran_step_args {
   const Real &aa;      // absorption opacity (1/length)
   const Real &ss;      // scattering opacity (1/length)
   const Real &vv;      // particle speed (should be c)
-  Real &vx;      // particle x/X1-direction speed
-  Real &vy;      // particle y/X2-direction speed
-  Real &vz;      // particle z/X3-direction speed
+  Real &vx;            // particle x/X1-direction speed
+  Real &vy;            // particle y/X2-direction speed
+  Real &vz;            // particle z/X3-direction speed
   const Real &dx_push; // minimum spatial cell dimension
   const bool &multi_d; // 2D or 3D
   const bool &three_d; // 3D
@@ -141,13 +141,6 @@ void ptcl_transport_step(tran_step_args tra) {
   const Real dt_push =
       ((tra.is_absorbed) ? dx_abs : ((tra.is_scattered) ? dx_sc : dx_push)) / tra.vv;
 
-  if (!(dt_push > 0.0) || !(dx_push > 0.0)) {
-    std::cout << "dt_push = " << dt_push << std::endl;
-    std::cout << "dx_push = " << dx_push << std::endl;
-  }
-  PARTHENON_REQUIRE(dt_push > 0.0, "IMC: dt_push <= 0.0");
-  PARTHENON_REQUIRE(dx_push > 0.0, "IMC: dx_push <= 0.0");
-
   // push
   tra.t += dt_push;
   tra.x += tra.vx * dt_push;
@@ -196,8 +189,6 @@ void ptcl_ddmc_step(ddmc_step_args dia) {
 
   // update particle time
   const Real dt_push = std::min(dt_ddmc, dt_end);
-
-  PARTHENON_REQUIRE(dt_push > 0.0, "DDMC: dt_push <= 0.0");
 
   dia.t += dt_push;
 
@@ -428,34 +419,60 @@ void ptcl_ddmc_to_imc(tran_step_args tra) {
     // sample spatial coordinate and velocity
     if (fuzzy_equal(tra.x, tra.xl + resf * eps_ddmc_offset * dx, dx, eps)) {
       // sample y and z
+      tra.y = tra.yl + tra.rng_gen.drand() * resf * dy;
+      tra.z = tra.zl + tra.rng_gen.drand() * resf * dz;
       // sample direction
       sample_face_iso_dir(tra.vv, tra.rng_gen, tra.vx, tra.vy, tra.vz);
+      // break loop
       res_valid = true;
+      break;
     } else if (fuzzy_equal(tra.x, tra.xu - resf * eps_ddmc_offset * dx, dx, eps)) {
       // sample y and z
+      tra.y = tra.yl + tra.rng_gen.drand() * resf * dy;
+      tra.z = tra.zl + tra.rng_gen.drand() * resf * dz;
       // sample direction
       sample_face_iso_dir(-tra.vv, tra.rng_gen, tra.vx, tra.vy, tra.vz);
+      // break loop
       res_valid = true;
-    } else if (fuzzy_equal(tra.y, tra.yl + resf * eps_ddmc_offset * dy, dy, eps) && tra.multi_d) {
+      break;
+    } else if (fuzzy_equal(tra.y, tra.yl + resf * eps_ddmc_offset * dy, dy, eps) &&
+               tra.multi_d) {
       // sample x and z
+      tra.x = tra.xl + tra.rng_gen.drand() * resf * dx;
+      tra.z = tra.zl + tra.rng_gen.drand() * resf * dz;
       // sample direction
       sample_face_iso_dir(tra.vv, tra.rng_gen, tra.vy, tra.vz, tra.vx);
       res_valid = true;
-    } else if (fuzzy_equal(tra.y, tra.yu - resf * eps_ddmc_offset * dy, dy, eps) && tra.multi_d) {
+    } else if (fuzzy_equal(tra.y, tra.yu - resf * eps_ddmc_offset * dy, dy, eps) &&
+               tra.multi_d) {
       // sample x and z
+      tra.x = tra.xl + tra.rng_gen.drand() * resf * dx;
+      tra.z = tra.zl + tra.rng_gen.drand() * resf * dz;
       // sample direction
       sample_face_iso_dir(-tra.vv, tra.rng_gen, tra.vy, tra.vz, tra.vx);
+      // break loop
       res_valid = true;
-    } else if (fuzzy_equal(tra.z, tra.zl + resf * eps_ddmc_offset * dz, dz, eps) && tra.three_d) {
+      break;
+    } else if (fuzzy_equal(tra.z, tra.zl + resf * eps_ddmc_offset * dz, dz, eps) &&
+               tra.three_d) {
       // sample x and y
+      tra.x = tra.xl + tra.rng_gen.drand() * resf * dx;
+      tra.y = tra.yl + tra.rng_gen.drand() * resf * dy;
       // sample direction
       sample_face_iso_dir(tra.vv, tra.rng_gen, tra.vz, tra.vx, tra.vy);
+      // break loop
       res_valid = true;
-    } else if (fuzzy_equal(tra.z, tra.zu + resf * eps_ddmc_offset * dz, dz, eps) && tra.three_d) {
+      break;
+    } else if (fuzzy_equal(tra.z, tra.zu - resf * eps_ddmc_offset * dz, dz, eps) &&
+               tra.three_d) {
       // sample x and y
+      tra.x = tra.xl + tra.rng_gen.drand() * resf * dx;
+      tra.y = tra.yl + tra.rng_gen.drand() * resf * dy;
       // sample direction
       sample_face_iso_dir(-tra.vv, tra.rng_gen, tra.vz, tra.vx, tra.vy);
+      // break loop
       res_valid = true;
+      break;
     }
   }
   PARTHENON_REQUIRE(res_valid, "Invalid transition from DDMC to IMC.");

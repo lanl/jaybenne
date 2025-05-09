@@ -58,6 +58,9 @@ TaskStatus TransportPhotons_DDMC(MeshData<Real> *md, const Real t_start, const R
   auto ppack_r = pdesc_r.GetPack(md);
   auto ppack_i = pdesc_i.GetPack(md);
 
+  // set tolerance for checking particle 0-velocity (i.e. if from DDMC block)
+  constexpr Real eps = parthenon::robust::EPS();
+
   // Indexing and dimensionality
   const auto &ib = md->GetBoundsI(IndexDomain::interior);
   const auto &jb = md->GetBoundsJ(IndexDomain::interior);
@@ -197,9 +200,9 @@ TaskStatus TransportPhotons_DDMC(MeshData<Real> *md, const Real t_start, const R
                                   t, x, y, z, is_absorbed, is_scattered};
 
               // if velocity is 0, particle is from a DDMC cell in another block at <= refinement
-              if (vx * vx + vy * vy + vz * vz < 0.5 * vv * vv) ptcl_ddmc_to_imc(tra);
-              PARTHENON_REQUIRE(vx * vx + vy * vy + vz * vz > 0.5 * vv * vv,
-                               "Invalid velocity: lower than lightspeed");
+              if (vx * vx + vy * vy + vz * vz < eps * vv * vv) ptcl_ddmc_to_imc(tra);
+              PARTHENON_DEBUG_REQUIRE(vx * vx + vy * vy + vz * vz > 0.5 * vv * vv,
+                                      "Invalid velocity: lower than lightspeed");
 
               // clang-format on
               ptcl_transport_step(tra);

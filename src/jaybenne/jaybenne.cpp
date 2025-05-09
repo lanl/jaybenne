@@ -165,8 +165,9 @@ TaskCollection RadiationStep(Mesh *pmesh, const Real t_start, const Real dt) {
     // Control particle population
     auto control_pop = tl.AddTask(update_fluid, jaybenne::ControlPopulation, base.get());
 
-    // Defrag particles?
-    auto defrag_pop = tl.AddTask(control_pop, jaybenne::DefragParticles, base.get());
+    // TODO: Defrag particles? Verify parth swarm defrag mechanics before uncommenting
+    // this. auto defrag_pop = tl.AddTask(control_pop, jaybenne::DefragParticles,
+    // base.get());
   }
 
   auto &timing_region1 = tc.AddRegion(1);
@@ -671,7 +672,7 @@ TaskStatus DefragParticles(MeshData<Real> *md) {
   auto &jbn = pm->packages.Get("jaybenne");
   auto &min_swarm_occupancy = jbn->template Param<Real>("min_swarm_occupancy");
   const int nblocks = md->NumBlocks();
-  
+
   for (int b = 0; b <= nblocks - 1; ++b) {
     auto &swarm = md->GetSwarmData(b)->Get(photons_swarm_name);
     if (swarm->GetNumActive() > 0) {
