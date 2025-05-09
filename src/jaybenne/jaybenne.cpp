@@ -164,6 +164,9 @@ TaskCollection RadiationStep(Mesh *pmesh, const Real t_start, const Real dt) {
 
     // Control particle population
     auto control_pop = tl.AddTask(update_fluid, jaybenne::ControlPopulation, base.get());
+
+    // Defrag particles?
+    auto defrag_pop = tl.AddTask(control_pop, jaybenne::DefragParticles, base.get());
   }
 
   auto &timing_region1 = tc.AddRegion(1);
@@ -662,13 +665,26 @@ TaskStatus UpdateDerivedTransportFields(MeshData<Real> *md, const Real dt) {
 //! \brief  NOTE(PDM): currently unused???
 //! TODO(BRR) We should re-enable this but add a runtime parameter that sets the
 //! fractional fragmentation of the memory pool above which we defragment.
-TaskStatus DefragParticles(MeshBlock *pmb) {
-  auto &jbn = pmb->packages.Get("jaybenne");
+TaskStatus DefragParticles(MeshData<Real> *md) {
+  namespace fj = field::jaybenne;
+  namespace ph = particle::photons;
+
+  auto pm = md->GetParentPointer();
+  auto &resolved_pkgs = pm->resolved_packages;
+  auto &jbn = pm->packages.Get("jaybenne");
+
+  // Create SparsePack
+  static auto desc = MakePackDescriptor<fj::energy_tally>(resolved_pkgs.get());
+  auto vmesh = desc.GetPack(md);
+
+  const int &nblocks = vmesh.GetNBlocks();
   auto &min_swarm_occupancy = jbn->template Param<Real>("min_swarm_occupancy");
-  auto &swarm = pmb->meshblock_data.Get()->GetSwarmData()->Get(photons_swarm_name);
-  if (swarm->GetNumActive() > 0) {
-    if (swarm->GetPackingEfficiency() < min_swarm_occupancy) {
-      swarm->Defrag();
+  for (int b = 0; b <= nblocks - 1; ++b) {
+    auto &swarm = md->GetSwarmData(b)->Get(photons_swarm_name);
+    if (swarm->GetNumActive() > 0) {
+      if (swarm->GetPackingEfficiency() < min_swarm_occupancy) {
+        swarm->Defrag();
+      }
     }
   }
   return TaskStatus::complete;

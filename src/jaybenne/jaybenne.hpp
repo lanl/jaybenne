@@ -79,7 +79,7 @@ TaskStatus SampleDDMCBlockFace(MeshData<Real> *md);
 TaskStatus CheckCompletion(MeshData<Real> *md, const Real t_end);
 template <typename T, SourceType ST, FrequencyType FT>
 TaskStatus SourcePhotons(T *md, const Real t_start, const Real dt);
-TaskStatus DefragParticles(MeshBlock *pmb);
+TaskStatus DefragParticles(MeshData<Real> *md);
 TaskStatus UpdateDerivedTransportFields(MeshData<Real> *md, const Real dt);
 template <typename T>
 TaskStatus EvaluateRadiationEnergy(T *md);

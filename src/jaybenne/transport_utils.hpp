@@ -48,9 +48,9 @@ struct tran_step_args {
   const Real &aa;      // absorption opacity (1/length)
   const Real &ss;      // scattering opacity (1/length)
   const Real &vv;      // particle speed (should be c)
-  const Real &vx;      // particle x/X1-direction speed
-  const Real &vy;      // particle y/X2-direction speed
-  const Real &vz;      // particle z/X3-direction speed
+  Real &vx;      // particle x/X1-direction speed
+  Real &vy;      // particle y/X2-direction speed
+  Real &vz;      // particle z/X3-direction speed
   const Real &dx_push; // minimum spatial cell dimension
   const bool &multi_d; // 2D or 3D
   const bool &three_d; // 3D
@@ -141,6 +141,13 @@ void ptcl_transport_step(tran_step_args tra) {
   const Real dt_push =
       ((tra.is_absorbed) ? dx_abs : ((tra.is_scattered) ? dx_sc : dx_push)) / tra.vv;
 
+  if (!(dt_push > 0.0) || !(dx_push > 0.0)) {
+    std::cout << "dt_push = " << dt_push << std::endl;
+    std::cout << "dx_push = " << dx_push << std::endl;
+  }
+  PARTHENON_REQUIRE(dt_push > 0.0, "IMC: dt_push <= 0.0");
+  PARTHENON_REQUIRE(dx_push > 0.0, "IMC: dx_push <= 0.0");
+
   // push
   tra.t += dt_push;
   tra.x += tra.vx * dt_push;
@@ -189,6 +196,9 @@ void ptcl_ddmc_step(ddmc_step_args dia) {
 
   // update particle time
   const Real dt_push = std::min(dt_ddmc, dt_end);
+
+  PARTHENON_REQUIRE(dt_push > 0.0, "DDMC: dt_push <= 0.0");
+
   dia.t += dt_push;
 
   if (is_ddmc_event) {
@@ -395,6 +405,60 @@ void ptcl_ddmc_albedo(ddmc_step_args dia, bool &is_rejected) {
     dia.y = 0.5 * (dia.yl + dia.yu);
     dia.z = 0.5 * (dia.zl + dia.zu);
   }
+}
+
+KOKKOS_FORCEINLINE_FUNCTION
+void ptcl_ddmc_to_imc(tran_step_args tra) {
+
+  // set tolerance for checking particle coordinate
+  constexpr Real eps = parthenon::robust::EPS();
+
+  // cell dimensions
+  const Real dx = tra.xu - tra.xl;
+  const Real dy = tra.yu - tra.yl;
+  const Real dz = tra.zu - tra.zl;
+
+  // two possibilities here
+  bool res_valid = false;
+
+  for (int r = 0; r < 2; ++r) {
+
+    const Real resf = 1.0 / static_cast<Real>(r + 1);
+
+    // sample spatial coordinate and velocity
+    if (fuzzy_equal(tra.x, tra.xl + resf * eps_ddmc_offset * dx, dx, eps)) {
+      // sample y and z
+      // sample direction
+      sample_face_iso_dir(tra.vv, tra.rng_gen, tra.vx, tra.vy, tra.vz);
+      res_valid = true;
+    } else if (fuzzy_equal(tra.x, tra.xu - resf * eps_ddmc_offset * dx, dx, eps)) {
+      // sample y and z
+      // sample direction
+      sample_face_iso_dir(-tra.vv, tra.rng_gen, tra.vx, tra.vy, tra.vz);
+      res_valid = true;
+    } else if (fuzzy_equal(tra.y, tra.yl + resf * eps_ddmc_offset * dy, dy, eps) && tra.multi_d) {
+      // sample x and z
+      // sample direction
+      sample_face_iso_dir(tra.vv, tra.rng_gen, tra.vy, tra.vz, tra.vx);
+      res_valid = true;
+    } else if (fuzzy_equal(tra.y, tra.yu - resf * eps_ddmc_offset * dy, dy, eps) && tra.multi_d) {
+      // sample x and z
+      // sample direction
+      sample_face_iso_dir(-tra.vv, tra.rng_gen, tra.vy, tra.vz, tra.vx);
+      res_valid = true;
+    } else if (fuzzy_equal(tra.z, tra.zl + resf * eps_ddmc_offset * dz, dz, eps) && tra.three_d) {
+      // sample x and y
+      // sample direction
+      sample_face_iso_dir(tra.vv, tra.rng_gen, tra.vz, tra.vx, tra.vy);
+      res_valid = true;
+    } else if (fuzzy_equal(tra.z, tra.zu + resf * eps_ddmc_offset * dz, dz, eps) && tra.three_d) {
+      // sample x and y
+      // sample direction
+      sample_face_iso_dir(-tra.vv, tra.rng_gen, tra.vz, tra.vx, tra.vy);
+      res_valid = true;
+    }
+  }
+  PARTHENON_REQUIRE(res_valid, "Invalid transition from DDMC to IMC.");
 }
 
 } // namespace jaybenne

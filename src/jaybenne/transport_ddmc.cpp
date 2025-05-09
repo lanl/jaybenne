@@ -183,6 +183,7 @@ TaskStatus TransportPhotons_DDMC(MeshData<Real> *md, const Real t_start, const R
               if (!is_rejected) ptcl_ddmc_step(dia);
 
             } else {
+
               // push particle
               // clang-format off
               tran_step_args tra{ // constants
@@ -194,6 +195,12 @@ TaskStatus TransportPhotons_DDMC(MeshData<Real> *md, const Real t_start, const R
                                   xl, yl, zl, xu, yu, zu,
                                   // updated by push
                                   t, x, y, z, is_absorbed, is_scattered};
+
+              // if velocity is 0, particle is from a DDMC cell in another block at <= refinement
+              if (vx * vx + vy * vy + vz * vz < 0.5 * vv * vv) ptcl_ddmc_to_imc(tra);
+              PARTHENON_REQUIRE(vx * vx + vy * vy + vz * vz > 0.5 * vv * vv,
+                               "Invalid velocity: lower than lightspeed");
+
               // clang-format on
               ptcl_transport_step(tra);
             }
