@@ -666,19 +666,12 @@ TaskStatus UpdateDerivedTransportFields(MeshData<Real> *md, const Real dt) {
 //! TODO(BRR) We should re-enable this but add a runtime parameter that sets the
 //! fractional fragmentation of the memory pool above which we defragment.
 TaskStatus DefragParticles(MeshData<Real> *md) {
-  namespace fj = field::jaybenne;
-  namespace ph = particle::photons;
-
   auto pm = md->GetParentPointer();
   auto &resolved_pkgs = pm->resolved_packages;
   auto &jbn = pm->packages.Get("jaybenne");
-
-  // Create SparsePack
-  static auto desc = MakePackDescriptor<fj::energy_tally>(resolved_pkgs.get());
-  auto vmesh = desc.GetPack(md);
-
-  const int &nblocks = vmesh.GetNBlocks();
   auto &min_swarm_occupancy = jbn->template Param<Real>("min_swarm_occupancy");
+  const int nblocks = md->NumBlocks();
+  
   for (int b = 0; b <= nblocks - 1; ++b) {
     auto &swarm = md->GetSwarmData(b)->Get(photons_swarm_name);
     if (swarm->GetNumActive() > 0) {
