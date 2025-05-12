@@ -181,7 +181,8 @@ TaskStatus TransportPhotons_DDMC(MeshData<Real> *md, const Real t_start, const R
 
               // check for IMC-DDMC albedo rejection if this particle just arrived from an
               // IMC region
-              ptcl_ddmc_albedo(dia, is_rejected);
+              if (vx * vx + vy * vy + vz * vz > 0.5 * vv * vv)
+                ptcl_ddmc_albedo(dia, is_rejected);
 
               if (!is_rejected) ptcl_ddmc_step(dia);
 

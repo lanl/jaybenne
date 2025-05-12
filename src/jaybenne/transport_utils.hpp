@@ -112,7 +112,7 @@ KOKKOS_FORCEINLINE_FUNCTION
 void ptcl_transport_step(tran_step_args tra) {
 
   // use distances and convert to time after min is determined to reduce division ops
-  const Real rmin = std::numeric_limits<Real>::min();
+  constexpr Real rmin = std::numeric_limits<Real>::min();
   const Real lam_abs = 1.0 / (tra.ff * tra.aa + rmin);
   const Real lam_sc = 1.0 / (tra.ss + (1.0 - tra.ff) * tra.aa + rmin);
   const Real dx_abs = -lam_abs * std::log(tra.rng_gen.drand());
@@ -146,6 +146,10 @@ void ptcl_transport_step(tran_step_args tra) {
   tra.x += tra.vx * dt_push;
   tra.y += tra.multi_d * tra.vy * dt_push;
   tra.z += tra.three_d * tra.vz * dt_push;
+
+  // push time slightly into next time step if particle is at end of time step (census)
+  const bool is_atend = fuzzy_equal(tra.t, tra.t_start + tra.dt, tra.dt, eps_imc_offset);
+  tra.t = is_atend ? tra.t_start + (1.0 + eps_imc_offset) * tra.dt : tra.t;
 
   // handle faces
   const bool leave = !(tra.is_absorbed || tra.is_scattered);
@@ -275,6 +279,9 @@ void ptcl_ddmc_step(ddmc_step_args dia) {
     dia.vz = dia.vv * mu;
     dia.vx = dia.vv * nu * std::cos(phi);
     dia.vy = dia.vv * nu * std::sin(phi);
+
+    // ensure time is slightly past census time (TODO: use eps_ddmc_offset?)
+    dia.t = dia.t_start + (1.0 + eps_imc_offset) * dia.dt;
   }
 }
 
@@ -286,8 +293,31 @@ void ptcl_ddmc_albedo(ddmc_step_args dia, bool &is_rejected) {
   const Real dy = dia.yu - dia.yl;
   const Real dz = dia.zu - dia.zl;
 
+  // permit into DDMC automatically if originating from census
+  if (fuzzy_equal(dia.t, dia.t_start, dia.dt, 2.0 * eps_imc_offset)) {
+    dia.x = 0.5 * (dia.xl + dia.xu);
+    dia.y = 0.5 * (dia.yl + dia.yu);
+    dia.z = 0.5 * (dia.zl + dia.zu);
+    is_rejected = false;
+    return;
+  }
+
+  // IMC->DDMC entry conditions at each cell face
+  const bool lowx =
+      (dia.vx > 0.0 && fuzzy_equal(dia.x, dia.xl, dx, 2.5 * eps_imc_offset));
+  const bool higx =
+      (!(dia.vx > 0.0) && fuzzy_equal(dia.x, dia.xu, dx, 2.5 * eps_imc_offset));
+  const bool lowy =
+      (dia.vy > 0.0 && fuzzy_equal(dia.y, dia.yl, dy, 2.5 * eps_imc_offset));
+  const bool higy =
+      (!(dia.vy > 0.0) && fuzzy_equal(dia.y, dia.yu, dy, 2.5 * eps_imc_offset));
+  const bool lowz =
+      (dia.vz > 0.0 && fuzzy_equal(dia.z, dia.zl, dz, 2.5 * eps_imc_offset));
+  const bool higz =
+      (!(dia.vz > 0.0) && fuzzy_equal(dia.z, dia.zu, dz, 2.5 * eps_imc_offset));
+
   // check that coordinate is at cell edge (only possible coming from IMC)
-  if (fuzzy_equal(dia.x, dia.xl, dx, 2.5 * eps_imc_offset)) {
+  if (lowx) {
     // lower x-face
 
     // vx should be non-negative
@@ -299,12 +329,12 @@ void ptcl_ddmc_albedo(ddmc_step_args dia, bool &is_rejected) {
       // sample direction
       sample_face_iso_dir(-dia.vv, dia.rng_gen, dia.vx, dia.vy, dia.vz);
       // set particle z position slightly above face
-      dia.x = dia.xl - eps_imc_offset * dx;
+      dia.x = dia.xl - eps_ddmc_offset * dx;
       // set rejection indicator
       is_rejected = true;
     }
 
-  } else if (fuzzy_equal(dia.x, dia.xu, dx, 2.5 * eps_imc_offset)) {
+  } else if (higx) {
     // upper x-face
 
     // vx should be non-positive
@@ -316,12 +346,12 @@ void ptcl_ddmc_albedo(ddmc_step_args dia, bool &is_rejected) {
       // sample direction
       sample_face_iso_dir(dia.vv, dia.rng_gen, dia.vx, dia.vy, dia.vz);
       // set particle z position slightly above face
-      dia.x = dia.xu + eps_imc_offset * dx;
+      dia.x = dia.xu + eps_ddmc_offset * dx;
       // set rejection indicator
       is_rejected = true;
     }
 
-  } else if (fuzzy_equal(dia.y, dia.yl, dy, 2.5 * eps_imc_offset) && dia.multi_d) {
+  } else if (lowy && dia.multi_d) {
     // lower y-face
 
     // vy should be non-negative
@@ -333,12 +363,12 @@ void ptcl_ddmc_albedo(ddmc_step_args dia, bool &is_rejected) {
       // sample direction
       sample_face_iso_dir(-dia.vv, dia.rng_gen, dia.vy, dia.vz, dia.vx);
       // set particle y position slightly above face
-      dia.y = dia.yl - eps_imc_offset * dy;
+      dia.y = dia.yl - eps_ddmc_offset * dy;
       // set rejection indicator
       is_rejected = true;
     }
 
-  } else if (fuzzy_equal(dia.y, dia.yu, dy, 2.5 * eps_imc_offset) && dia.multi_d) {
+  } else if (higy && dia.multi_d) {
     // upper y-face
 
     // vy should be non-positive
@@ -350,12 +380,12 @@ void ptcl_ddmc_albedo(ddmc_step_args dia, bool &is_rejected) {
       // sample direction
       sample_face_iso_dir(dia.vv, dia.rng_gen, dia.vy, dia.vz, dia.vx);
       // set particle y position slightly above face
-      dia.y = dia.yu + eps_imc_offset * dy;
+      dia.y = dia.yu + eps_ddmc_offset * dy;
       // set rejection indicator
       is_rejected = true;
     }
 
-  } else if (fuzzy_equal(dia.z, dia.zl, dz, 2.5 * eps_imc_offset) && dia.three_d) {
+  } else if (lowz && dia.three_d) {
     // lower z-face
 
     // vz should be non-negative
@@ -367,12 +397,12 @@ void ptcl_ddmc_albedo(ddmc_step_args dia, bool &is_rejected) {
       // sample direction
       sample_face_iso_dir(-dia.vv, dia.rng_gen, dia.vz, dia.vx, dia.vy);
       // set particle z position slightly above face
-      dia.z = dia.zl - eps_imc_offset * dz;
+      dia.z = dia.zl - eps_ddmc_offset * dz;
       // set rejection indicator
       is_rejected = true;
     }
 
-  } else if (fuzzy_equal(dia.z, dia.zu, dz, 2.5 * eps_imc_offset) && dia.three_d) {
+  } else if (higz && dia.three_d) {
     // upper z-face
 
     // vz should be non-positive
@@ -384,7 +414,7 @@ void ptcl_ddmc_albedo(ddmc_step_args dia, bool &is_rejected) {
       // sample direction
       sample_face_iso_dir(dia.vv, dia.rng_gen, dia.vz, dia.vx, dia.vy);
       // set particle z position slightly above face
-      dia.z = dia.zu + eps_imc_offset * dz;
+      dia.z = dia.zu + eps_ddmc_offset * dz;
       // set rejection indicator
       is_rejected = true;
     }
