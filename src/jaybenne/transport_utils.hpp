@@ -65,6 +65,9 @@ struct tran_step_args {
   Real &x;            // particle x/X1-coordinate
   Real &y;            // particle y/X2-coordinate
   Real &z;            // particle z/X3-coordinate
+  Real &ww;           // energy-weight of the particle
+  Real &fraction;     // weight/initial weight of the particle
+  Real &e_abs;        // energy-weight absorbed in this step
   bool &is_absorbed;  // indicator for absorption in the step
   bool &is_scattered; // indicator for scattering in the step
 };
@@ -101,6 +104,9 @@ struct ddmc_step_args {
   Real &vx;           // particle x/X1-direction speed
   Real &vy;           // particle y/X2-direction speed
   Real &vz;           // particle z/X3-direction speed
+  Real &ww;           // energy-weight of the particle
+  Real &fraction;     // weight/initial weight of the particle
+  Real &e_abs;        // energy-weight absorbed in this step
   int &ip;            // x/X1 block index
   int &jp;            // y/X2 block index
   int &kp;            // z/X3 block index
@@ -112,10 +118,13 @@ KOKKOS_FORCEINLINE_FUNCTION
 void ptcl_transport_step(tran_step_args tra) {
 
   // use distances and convert to time after min is determined to reduce division ops
-  const Real rmin = std::numeric_limits<Real>::min();
+  constexpr Real rmin = std::numeric_limits<Real>::min();
+  constexpr Real rmax = std::numeric_limits<Real>::max();
+  constexpr Real cutoff = 1.0e-6;
+  const bool analog = tra.fraction < cutoff;
   const Real lam_abs = 1.0 / (tra.ff * tra.aa + rmin);
   const Real lam_sc = 1.0 / (tra.ss + (1.0 - tra.ff) * tra.aa + rmin);
-  const Real dx_abs = -lam_abs * std::log(tra.rng_gen.drand());
+  const Real dx_abs = (analog) ? -lam_abs * std::log(tra.rng_gen.drand()) : rmax;
   const Real dx_sc = -lam_sc * std::log(tra.rng_gen.drand());
   const Real dx_end = tra.vv * ((tra.t_start + tra.dt) - tra.t);
   Real dx_push = std::min(tra.dx_push, dx_end);
@@ -146,6 +155,12 @@ void ptcl_transport_step(tran_step_args tra) {
   tra.x += tra.vx * dt_push;
   tra.y += tra.multi_d * tra.vy * dt_push;
   tra.z += tra.three_d * tra.vz * dt_push;
+
+  // attenuate particle if non-analog
+  const Real exp_factor = (analog) ? 1.0 : exp(-dt_push*tra.ff*tra.aa);
+  tra.e_abs = tra.ww*(1.0-exp_factor);
+  tra.ww = tra.ww - tra.e_abs;
+  tra.fraction = tra.fraction*exp_factor;
 
   // handle faces
   const bool leave = !(tra.is_absorbed || tra.is_scattered);

@@ -55,6 +55,7 @@ namespace particle {
 namespace photons {
 SWARM_VARIABLE(Real, particle.photons, time);
 SWARM_VARIABLE(Real, particle.photons, weight);
+SWARM_VARIABLE(Real, particle.photons, fraction);
 SWARM_VARIABLE(Real, particle.photons, energy);
 SWARM_VARIABLE(Real, particle.photons, v);
 SWARM_VARIABLE(int, particle.photons, ijk);

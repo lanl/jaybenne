@@ -65,7 +65,7 @@ TaskStatus TransportPhotons(MeshData<Real> *md, const Real t_start, const Real d
 
   // Create SwarmPacks
   static auto pdesc_r = MakeSwarmPackDescriptor<sp::x, sp::y, sp::z, ph::v, ph::energy,
-                                                ph::weight, ph::time>(photons_swarm_name);
+                                                ph::weight, ph::fraction, ph::time>(photons_swarm_name);
   static auto pdesc_i = MakeSwarmPackDescriptor<ph::ijk>(photons_swarm_name);
   auto ppack_r = pdesc_r.GetPack(md);
   auto ppack_i = pdesc_i.GetPack(md);
@@ -106,7 +106,8 @@ TaskStatus TransportPhotons(MeshData<Real> *md, const Real t_start, const Real d
           Real &vx = ppack_r(b, ph::v(0), n);
           Real &vy = ppack_r(b, ph::v(1), n);
           Real &vz = ppack_r(b, ph::v(2), n);
-          const Real &ww = ppack_r(b, ph::weight(), n);
+          Real &ww = ppack_r(b, ph::weight(), n);
+          Real &fraction = ppack_r(b, ph::fraction(), n);
           Real &ee = ppack_r(b, ph::energy(), n);
 
           // Position and logical location of particle
@@ -166,6 +167,8 @@ TaskStatus TransportPhotons(MeshData<Real> *md, const Real t_start, const Real d
             bool is_absorbed = false;
             bool is_scattered = false;
 
+            Real e_abs = 0.0;
+
             // push particle
             // clang-format off
             tran_step_args tra{ // constants
@@ -176,7 +179,7 @@ TaskStatus TransportPhotons(MeshData<Real> *md, const Real t_start, const Real d
                                 dx_push, multi_d, three_d,
                                 xl, yl, zl, xu, yu, zu,
                                 // updated by push
-                                t, x, y, z, is_absorbed, is_scattered};
+                                t, x, y, z, ww, fraction, e_abs, is_absorbed, is_scattered};
             // clang-format on
             ptcl_transport_step(tra);
             swarm_d.Xtoijk(x, y, z, ip, jp, kp);
@@ -190,7 +193,12 @@ TaskStatus TransportPhotons(MeshData<Real> *md, const Real t_start, const Real d
               break;
             }
 
-            if (is_absorbed) {
+            if (!is_absorbed) {
+              // process absorption
+              Real &dejbn = vmesh(b, fj::energy_delta(), kp, jp, ip);
+              Kokkos::atomic_add(&dejbn, e_abs);
+            }
+            else {
               // process absorption
               Real &dejbn = vmesh(b, fj::energy_delta(), kp, jp, ip);
               Kokkos::atomic_add(&dejbn, ww);
@@ -225,6 +233,8 @@ TaskStatus TransportPhotons(MeshData<Real> *md, const Real t_start, const Real d
             }
           }
           rng_pool.free_state(rng_gen);
+          // reset fraction of particles that make it census
+          ppack_r(b, ph::fraction(), n) = 1.0;
         }
       });
 

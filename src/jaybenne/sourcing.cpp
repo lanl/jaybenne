@@ -191,7 +191,7 @@ TaskStatus SourcePhotons(T *md, const Real t_start, const Real dt) {
 
   static auto pdesc_r =
       MakeSwarmPackDescriptor<swarm_position::x, swarm_position::y, swarm_position::z,
-                              ph::time, ph::v, ph::energy, ph::weight>(
+                              ph::time, ph::v, ph::energy, ph::weight, ph::fraction>(
           photons_swarm_name);
   static auto pdesc_i = MakeSwarmPackDescriptor<ph::ijk>(photons_swarm_name);
   auto ppack_r = pdesc_r.GetPack(md);
@@ -234,8 +234,9 @@ TaskStatus SourcePhotons(T *md, const Real t_start, const Real dt) {
           ppack_i(b, ph::ijk(1), n) = j;
           ppack_i(b, ph::ijk(2), n) = k;
 
-          // Set energy weight
+          // Set energy weight and fraction
           ppack_r(b, ph::weight(), n) = vmesh(b, fj::source_ew_per_cell(), k, j, i);
+          ppack_r(b, ph::fraction(), n) = 1.0;
 
           // Sample position uniformly in space over cell
           // TODO(BRR) only valid for Cartesian
