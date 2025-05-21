@@ -245,7 +245,6 @@ TaskStatus SourcePhotons(T *md, const Real t_start, const Real dt) {
 
           // Sample position uniformly in space over cell
           // TODO(BRR) only valid for Cartesian
-          const Real one_minus_eps = ;
           ppack_r(b, swarm_position::x(), n) = xi + dx_i * ome * (rng_gen.drand() - 0.5);
           ppack_r(b, swarm_position::y(), n) = yi + dx_j * ome * (rng_gen.drand() - 0.5);
           ppack_r(b, swarm_position::z(), n) = zi + dx_k * ome * (rng_gen.drand() - 0.5);
