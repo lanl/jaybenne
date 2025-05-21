@@ -166,8 +166,7 @@ TaskCollection RadiationStep(Mesh *pmesh, const Real t_start, const Real dt) {
     auto control_pop = tl.AddTask(update_fluid, jaybenne::ControlPopulation, base.get());
 
     // TODO: Defrag particles? Verify parth swarm defrag mechanics before uncommenting
-    // this. auto defrag_pop = tl.AddTask(control_pop, jaybenne::DefragParticles,
-    // base.get());
+    // auto defrag_pop = tl.AddTask(control_pop, jaybenne::DefragParticles, base.get());
   }
 
   auto &timing_region1 = tc.AddRegion(1);

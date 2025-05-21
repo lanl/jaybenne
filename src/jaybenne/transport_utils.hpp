@@ -287,7 +287,6 @@ void ptcl_ddmc_step(ddmc_step_args dia) {
 
 KOKKOS_FORCEINLINE_FUNCTION
 void ptcl_ddmc_albedo(ddmc_step_args dia, bool &is_rejected) {
-
   constexpr Real lam_ext = 0.7104;
   const Real dx = dia.xu - dia.xl;
   const Real dy = dia.yu - dia.yl;
@@ -303,18 +302,16 @@ void ptcl_ddmc_albedo(ddmc_step_args dia, bool &is_rejected) {
   }
 
   // IMC->DDMC entry conditions at each cell face
-  const bool lowx =
-      (dia.vx > 0.0 && fuzzy_equal(dia.x, dia.xl, dx, 2.5 * eps_imc_offset));
-  const bool higx =
-      (!(dia.vx > 0.0) && fuzzy_equal(dia.x, dia.xu, dx, 2.5 * eps_imc_offset));
-  const bool lowy =
-      (dia.vy > 0.0 && fuzzy_equal(dia.y, dia.yl, dy, 2.5 * eps_imc_offset));
-  const bool higy =
-      (!(dia.vy > 0.0) && fuzzy_equal(dia.y, dia.yu, dy, 2.5 * eps_imc_offset));
-  const bool lowz =
-      (dia.vz > 0.0 && fuzzy_equal(dia.z, dia.zl, dz, 2.5 * eps_imc_offset));
-  const bool higz =
-      (!(dia.vz > 0.0) && fuzzy_equal(dia.z, dia.zu, dz, 2.5 * eps_imc_offset));
+  const bool vxp = (dia.vx > 0.0);
+  const bool vyp = (dia.vy > 0.0);
+  const bool vzp = (dia.vz > 0.0);
+  const Real w_eps_imc_offset = 2.5 * eps_imc_offset;
+  const bool lowx = (vxp && fuzzy_equal(dia.x, dia.xl, dx, w_eps_imc_offset));
+  const bool higx = (!vxp && fuzzy_equal(dia.x, dia.xu, dx, w_eps_imc_offset));
+  const bool lowy = (vyp && fuzzy_equal(dia.y, dia.yl, dy, w_eps_imc_offset));
+  const bool higy = (!vyp && fuzzy_equal(dia.y, dia.yu, dy, w_eps_imc_offset));
+  const bool lowz = (vzp && fuzzy_equal(dia.z, dia.zl, dz, w_eps_imc_offset));
+  const bool higz = (!vzp && fuzzy_equal(dia.z, dia.zu, dz, w_eps_imc_offset));
 
   // check that coordinate is at cell edge (only possible coming from IMC)
   if (lowx) {

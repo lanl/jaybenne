@@ -201,6 +201,7 @@ TaskStatus SourcePhotons(T *md, const Real t_start, const Real dt) {
   auto ppack_i = pdesc_i.GetPack(md);
 
   constexpr Real eps = 4.0e8 * parthenon::robust::EPS();
+  const Real ome = 1.0 - eps;
 
   parthenon::par_for(
       DEFAULT_LOOP_PATTERN, "SourcePhotons2", parthenon::DevExecSpace(), 0, nblocks - 1,
@@ -244,12 +245,10 @@ TaskStatus SourcePhotons(T *md, const Real t_start, const Real dt) {
 
           // Sample position uniformly in space over cell
           // TODO(BRR) only valid for Cartesian
-          ppack_r(b, swarm_position::x(), n) =
-              xi + dx_i * (1.0 - eps) * (rng_gen.drand() - 0.5);
-          ppack_r(b, swarm_position::y(), n) =
-              yi + dx_j * (1.0 - eps) * (rng_gen.drand() - 0.5);
-          ppack_r(b, swarm_position::z(), n) =
-              zi + dx_k * (1.0 - eps) * (rng_gen.drand() - 0.5);
+          const Real one_minus_eps = ;
+          ppack_r(b, swarm_position::x(), n) = xi + dx_i * ome * (rng_gen.drand() - 0.5);
+          ppack_r(b, swarm_position::y(), n) = yi + dx_j * ome * (rng_gen.drand() - 0.5);
+          ppack_r(b, swarm_position::z(), n) = zi + dx_k * ome * (rng_gen.drand() - 0.5);
 
           // Sample direction uniformly in solid angle
           const Real theta = std::acos(2.0 * rng_gen.drand() - 1.0);
