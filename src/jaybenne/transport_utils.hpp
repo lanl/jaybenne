@@ -21,8 +21,11 @@ namespace jaybenne {
 
 // position displacements into next cell, for IMC and DDMC
 // TODO(@pdmllen): how to best set prefactor?
-constexpr Real eps_imc_offset = 1.0e6 * parthenon::robust::EPS();
-constexpr Real eps_ddmc_offset = 1.0e8 * parthenon::robust::EPS();
+KOKKOS_FORCEINLINE_FUNCTION
+constexpr Real eps_imc_offset() { return 1.0e6 * parthenon::robust::EPS(); }
+
+KOKKOS_FORCEINLINE_FUNCTION
+constexpr Real eps_ddmc_offset() { return 1.0e8 * parthenon::robust::EPS(); }
 
 KOKKOS_FORCEINLINE_FUNCTION
 void sample_face_iso_dir(const Real vv, RngGen &rng_gen, Real &v1, Real &v2, Real &v3) {
@@ -149,9 +152,9 @@ void ptcl_transport_step(tran_step_args tra) {
 
   // handle faces
   const bool leave = !(tra.is_absorbed || tra.is_scattered);
-  const Real fdx = eps_imc_offset * (tra.xu - tra.xl);
-  const Real fdy = eps_imc_offset * (tra.yu - tra.yl);
-  const Real fdz = eps_imc_offset * (tra.zu - tra.zl);
+  const Real fdx = eps_imc_offset() * (tra.xu - tra.xl);
+  const Real fdy = eps_imc_offset() * (tra.yu - tra.yl);
+  const Real fdz = eps_imc_offset() * (tra.zu - tra.zl);
   tra.x = (std::abs(tra.x - tra.xl) < fdx && leave) ? tra.xl - fdx : tra.x;
   tra.x = (std::abs(tra.x - tra.xu) < fdx && leave) ? tra.xu + fdx : tra.x;
   tra.y = (tra.multi_d && std::abs(tra.y - tra.yl) < fdy && leave) ? tra.yl - fdy : tra.y;
@@ -167,7 +170,7 @@ void ptcl_ddmc_step(ddmc_step_args dia) {
   const Real rmin = std::numeric_limits<Real>::min();
 
   // calculate cell dimensions
-  const Real eps = eps_ddmc_offset; // move particles eps_ddmc_offset into next cell
+  const Real eps = eps_ddmc_offset(); // move particles eps_ddmc_offset() into next cell
   const Real dx = dia.xu - dia.xl;
   const Real dy = dia.yu - dia.yl;
   const Real dz = dia.zu - dia.zl;
@@ -286,7 +289,7 @@ void ptcl_ddmc_albedo(ddmc_step_args dia, bool &is_rejected) {
   const Real dz = dia.zu - dia.zl;
 
   // check that coordinate is at cell edge (only possible coming from IMC)
-  if (fuzzy_equal(dia.x, dia.xl, dx, 2.5 * eps_imc_offset)) {
+  if (fuzzy_equal(dia.x, dia.xl, dx, 2.5 * eps_imc_offset())) {
     // lower x-face
 
     // vx should be non-negative
@@ -298,12 +301,12 @@ void ptcl_ddmc_albedo(ddmc_step_args dia, bool &is_rejected) {
       // sample direction
       sample_face_iso_dir(-dia.vv, dia.rng_gen, dia.vx, dia.vy, dia.vz);
       // set particle z position slightly above face
-      dia.x = dia.xl - eps_imc_offset * dx;
+      dia.x = dia.xl - eps_imc_offset() * dx;
       // set rejection indicator
       is_rejected = true;
     }
 
-  } else if (fuzzy_equal(dia.x, dia.xu, dx, 2.5 * eps_imc_offset)) {
+  } else if (fuzzy_equal(dia.x, dia.xu, dx, 2.5 * eps_imc_offset())) {
     // upper x-face
 
     // vx should be non-positive
@@ -315,12 +318,12 @@ void ptcl_ddmc_albedo(ddmc_step_args dia, bool &is_rejected) {
       // sample direction
       sample_face_iso_dir(dia.vv, dia.rng_gen, dia.vx, dia.vy, dia.vz);
       // set particle z position slightly above face
-      dia.x = dia.xu + eps_imc_offset * dx;
+      dia.x = dia.xu + eps_imc_offset() * dx;
       // set rejection indicator
       is_rejected = true;
     }
 
-  } else if (fuzzy_equal(dia.y, dia.yl, dy, 2.5 * eps_imc_offset) && dia.multi_d) {
+  } else if (fuzzy_equal(dia.y, dia.yl, dy, 2.5 * eps_imc_offset()) && dia.multi_d) {
     // lower y-face
 
     // vy should be non-negative
@@ -332,12 +335,12 @@ void ptcl_ddmc_albedo(ddmc_step_args dia, bool &is_rejected) {
       // sample direction
       sample_face_iso_dir(-dia.vv, dia.rng_gen, dia.vy, dia.vz, dia.vx);
       // set particle y position slightly above face
-      dia.y = dia.yl - eps_imc_offset * dy;
+      dia.y = dia.yl - eps_imc_offset() * dy;
       // set rejection indicator
       is_rejected = true;
     }
 
-  } else if (fuzzy_equal(dia.y, dia.yu, dy, 2.5 * eps_imc_offset) && dia.multi_d) {
+  } else if (fuzzy_equal(dia.y, dia.yu, dy, 2.5 * eps_imc_offset()) && dia.multi_d) {
     // upper y-face
 
     // vy should be non-positive
@@ -349,12 +352,12 @@ void ptcl_ddmc_albedo(ddmc_step_args dia, bool &is_rejected) {
       // sample direction
       sample_face_iso_dir(dia.vv, dia.rng_gen, dia.vy, dia.vz, dia.vx);
       // set particle y position slightly above face
-      dia.y = dia.yu + eps_imc_offset * dy;
+      dia.y = dia.yu + eps_imc_offset() * dy;
       // set rejection indicator
       is_rejected = true;
     }
 
-  } else if (fuzzy_equal(dia.z, dia.zl, dz, 2.5 * eps_imc_offset) && dia.three_d) {
+  } else if (fuzzy_equal(dia.z, dia.zl, dz, 2.5 * eps_imc_offset()) && dia.three_d) {
     // lower z-face
 
     // vz should be non-negative
@@ -366,12 +369,12 @@ void ptcl_ddmc_albedo(ddmc_step_args dia, bool &is_rejected) {
       // sample direction
       sample_face_iso_dir(-dia.vv, dia.rng_gen, dia.vz, dia.vx, dia.vy);
       // set particle z position slightly above face
-      dia.z = dia.zl - eps_imc_offset * dz;
+      dia.z = dia.zl - eps_imc_offset() * dz;
       // set rejection indicator
       is_rejected = true;
     }
 
-  } else if (fuzzy_equal(dia.z, dia.zu, dz, 2.5 * eps_imc_offset) && dia.three_d) {
+  } else if (fuzzy_equal(dia.z, dia.zu, dz, 2.5 * eps_imc_offset()) && dia.three_d) {
     // upper z-face
 
     // vz should be non-positive
@@ -383,7 +386,7 @@ void ptcl_ddmc_albedo(ddmc_step_args dia, bool &is_rejected) {
       // sample direction
       sample_face_iso_dir(dia.vv, dia.rng_gen, dia.vz, dia.vx, dia.vy);
       // set particle z position slightly above face
-      dia.z = dia.zu + eps_imc_offset * dz;
+      dia.z = dia.zu + eps_imc_offset() * dz;
       // set rejection indicator
       is_rejected = true;
     }
