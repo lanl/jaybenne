@@ -43,6 +43,7 @@ TaskStatus TransportPhotons_DDMC(MeshData<Real> *md, const Real t_start, const R
   auto &mscattering = jb_pkg->template Param<MeanScattering>("mscattering_d");
   auto &rng_pool = jb_pkg->template Param<RngPool>("rng_pool");
   const Real vv = jb_pkg->template Param<Real>("speed_of_light");
+  const Real ske = 0.5 * SQR(vv);
   const Real &tau_ddmc = jb_pkg->template Param<Real>("tau_ddmc");
 
   // Create SparsePack
@@ -57,6 +58,9 @@ TaskStatus TransportPhotons_DDMC(MeshData<Real> *md, const Real t_start, const R
   static auto pdesc_i = MakeSwarmPackDescriptor<ph::ijk>(photons_swarm_name);
   auto ppack_r = pdesc_r.GetPack(md);
   auto ppack_i = pdesc_i.GetPack(md);
+
+  // set tolerance for checking particle 0-velocity (i.e. if from DDMC block)
+  constexpr Real eps = parthenon::robust::EPS();
 
   // Indexing and dimensionality
   const auto &ib = md->GetBoundsI(IndexDomain::interior);
@@ -176,13 +180,13 @@ TaskStatus TransportPhotons_DDMC(MeshData<Real> *md, const Real t_start, const R
                                   ip, jp, kp, is_absorbed, is_scattered};
               // clang-format on
 
-              // check for IMC-DDMC albedo rejection if this particle just arrived from an
-              // IMC region
-              ptcl_ddmc_albedo(dia, is_rejected);
+              // check for IMC-DDMC albedo rejection if particle arrived from IMC region
+              if (SQR(vx) + SQR(vy) + SQR(vz) > ske) ptcl_ddmc_albedo(dia, is_rejected);
 
               if (!is_rejected) ptcl_ddmc_step(dia);
 
             } else {
+
               // push particle
               // clang-format off
               tran_step_args tra{ // constants
@@ -194,6 +198,12 @@ TaskStatus TransportPhotons_DDMC(MeshData<Real> *md, const Real t_start, const R
                                   xl, yl, zl, xu, yu, zu,
                                   // updated by push
                                   t, x, y, z, is_absorbed, is_scattered};
+
+              // if v==0, particle is from a DDMC cell in another block at <= refinement
+              if (SQR(vx) + SQR(vy) + SQR(vz) < 2.0 * eps * ske) ptcl_ddmc_to_imc(tra);
+              PARTHENON_DEBUG_REQUIRE(SQR(vx) + SQR(vy) + SQR(vz) > ske,
+                                      "Invalid velocity: lower than lightspeed");
+
               // clang-format on
               ptcl_transport_step(tra);
             }
