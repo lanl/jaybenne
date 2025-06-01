@@ -22,6 +22,7 @@ set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_EXPORT_COMPILE_COMMANDS On)
 
 option(JAYBENNE_ENABLE_CUDA "Enable CUDA for Jaybenne and all dependencies" OFF)
+option(JAYBENNE_ENABLE_HIP "Enable HIP for Jaybenne and all dependencies" OFF)
 option(JAYBENNE_ENABLE_HDF5 "Enable HDF5 for Jaybenne and all dependencies" ON)
 option(JAYBENNE_ENABLE_MPI "Enable MPI for Jaybenne and all dependencies" ON)
 option(JAYBENNE_ENABLE_OPENMP "Enable OpenbMP for Jaybenne and all dependencies" OFF)
@@ -69,6 +70,14 @@ if(JAYBENNE_ENABLE_CUDA)
   set(Kokkos_ENABLE_SERIAL ON CACHE BOOL "" FORCE)
   set(Kokkos_ENABLE_CUDA_LAMBDA ON CACHE BOOL "" FORCE)
   set(Kokkos_ENABLE_CUDA_RELOCATABLE_DEVICE_CODE ON CACHE BOOL "" FORCE)
+endif()
+
+# HIP
+if(JAYBENNE_ENABLE_HIP)
+  set(SINGULARITY_USE_HIP ON CACHE BOOL "" FORCE)
+  set(Kokkos_ENABLE_HIP ON CACHE BOOL "" FORCE)
+  set(Kokkos_ENABLE_SERIAL ON CACHE BOOL "" FORCE)
+  set(Kokkos_ENABLE_HIP_RELOCATABLE_DEVICE_CODE OFF CACHE BOOL "" FORCE)
 endif()
 
 # HDF5
