@@ -194,7 +194,7 @@ Initialize_impl(ParameterInput *pin, EOS &eos,
   // Total number of particles
   int num_particles = pin->GetInteger(block_name, "num_particles");
   pkg->AddParam<>("num_particles", num_particles);
-  Real npc_min = pin->GetOrAddReal(block_name, "dnpc_min", 20.0);
+  Real dnpc_min = pin->GetOrAddReal(block_name, "dnpc_min", 20.0);
   PARTHENON_REQUIRE(dnpc_min >= 1.0, "dnpc_min must be at least 1");
   pkg->AddParam<>("dnpc_min", dnpc_min);
   Real dt = pin->GetOrAddReal(block_name, "dt", std::numeric_limits<Real>::max());
