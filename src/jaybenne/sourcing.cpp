@@ -64,6 +64,7 @@ TaskStatus SourcePhotons(T *md, const Real t_start, const Real dt) {
   // Extract params
   auto &rng_pool = jb_pkg->template Param<RngPool>("rng_pool");
   const int &num_particles = jb_pkg->template Param<int>("num_particles");
+  const Real &dnpc_min = jb_pkg->template Param<Real>("dnpc_min");
   const Real &vv = jb_pkg->template Param<Real>("speed_of_light");
   const Real &sb = jb_pkg->template Param<Real>("stefan_boltzmann");
 
@@ -161,7 +162,7 @@ TaskStatus SourcePhotons(T *md, const Real t_start, const Real dt) {
               // introducing supplementary functions/tasks that set these, or even
               // giving downstream codes the opportunity to set these themselves...
               snpc = npc;
-              dnum = std::max(std::round((snpc > actnum) * (snpc - actnum)), 20.0);
+              dnum = std::max(std::round((snpc > actnum) * (snpc - actnum)), dnpc_min);
               sewpc = erad / dnum;
               ntot += static_cast<int>(dnum);
             },
