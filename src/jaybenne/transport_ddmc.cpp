@@ -49,7 +49,8 @@ TaskStatus TransportPhotons_DDMC(MeshData<Real> *md, const Real t_start, const R
   // Create SparsePack
   static auto desc =
       MakePackDescriptor<fjh::density, fjh::sie, fj::fleck_factor, fj::ddmc_face_prob,
-                         fj::energy_delta>(resolved_pkgs.get());
+                         fj::energy_delta, fjh::absorption_opacity,
+                         fjh::scattering_opacity>(resolved_pkgs.get());
   auto vmesh = desc.GetPack(md);
 
   // Create SwarmPacks
