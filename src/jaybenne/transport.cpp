@@ -60,7 +60,8 @@ TaskStatus TransportPhotons(MeshData<Real> *md, const Real t_start, const Real d
   // Create SparsePack
   static auto desc =
       MakePackDescriptor<fjh::density, fjh::sie, fj::emission_cdf, fj::fleck_factor,
-                         fj::energy_delta>(resolved_pkgs.get());
+                         fj::energy_delta, fjh::absorption_opacity,
+                         fjh::scattering_opacity>(resolved_pkgs.get());
   auto vmesh = desc.GetPack(md);
 
   // Create SwarmPacks
@@ -143,9 +144,6 @@ TaskStatus TransportPhotons(MeshData<Real> *md, const Real t_start, const Real d
             const Real zu = coords.template Xc<parthenon::X3DIR>(kp) + 0.5 * dx_k;
 
             // Extract physical quantities
-            const Real &rho = vmesh(b, fjh::density(), kp, jp, ip);
-            const Real &sie = vmesh(b, fjh::sie(), kp, jp, ip);
-            const Real temp = eos.TemperatureFromDensityInternalEnergy(rho, sie);
             const Real &ff = vmesh(b, fj::fleck_factor(), kp, jp, ip);
             Real ss = JaybenneNull<Real>();
             Real aa = JaybenneNull<Real>();
@@ -155,9 +153,12 @@ TaskStatus TransportPhotons(MeshData<Real> *md, const Real t_start, const Real d
             [[maybe_unused]] auto scatter = scattering;
             if constexpr (FT == FrequencyType::gray) {
               // TODO: use TotalScatteringCoefficient(rho, temp), when available
-              ss = mscatter.RosselandMeanTotalScatteringCoefficient(rho, temp);
-              aa = mopac.AbsorptionCoefficient(rho, temp);
+              ss = vmesh(b, fjh::scattering_opacity(), kp, jp, ip);
+              aa = vmesh(b, fjh::absorption_opacity(), kp, jp, ip);
             } else if constexpr (FT == FrequencyType::multigroup) {
+              const Real &rho = vmesh(b, fjh::density(), kp, jp, ip);
+              const Real &sie = vmesh(b, fjh::sie(), kp, jp, ip);
+              const Real temp = eos.TemperatureFromDensityInternalEnergy(rho, sie);
               ss = scatter.TotalScatteringCoefficient(rho, temp, ee);
               aa = opac.AbsorptionCoefficient(rho, temp, ee);
             }
