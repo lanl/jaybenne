@@ -48,8 +48,9 @@ TaskStatus TransportPhotons_DDMC(MeshData<Real> *md, const Real t_start, const R
 
   // Create SparsePack
   static auto desc =
-      MakePackDescriptor<fjh::density, fjh::sie, fj::fleck_factor, fj::ddmc_face_prob,
-                         fj::energy_delta>(resolved_pkgs.get());
+      MakePackDescriptor<fj::fleck_factor, fj::ddmc_face_prob, fj::energy_delta,
+                         fjh::absorption_opacity, fjh::scattering_opacity>(
+          resolved_pkgs.get());
   auto vmesh = desc.GetPack(md);
 
   // Create SwarmPacks
@@ -128,13 +129,9 @@ TaskStatus TransportPhotons_DDMC(MeshData<Real> *md, const Real t_start, const R
             const Real zu = coords.template Xc<parthenon::X3DIR>(kp) + 0.5 * dx_k;
 
             // Extract physical quantities
-            const Real &rho = vmesh(b, fjh::density(), kp, jp, ip);
-            const Real &sie = vmesh(b, fjh::sie(), kp, jp, ip);
-            const Real temp = eos.TemperatureFromDensityInternalEnergy(rho, sie);
             const Real &ff = vmesh(b, fj::fleck_factor(), kp, jp, ip);
-            const Real ss =
-                mscattering.RosselandMeanTotalScatteringCoefficient(rho, temp);
-            const Real aa = mopacity.AbsorptionCoefficient(rho, temp);
+            const Real &ss = vmesh(b, fjh::scattering_opacity(), kp, jp, ip);
+            const Real &aa = vmesh(b, fjh::absorption_opacity(), kp, jp, ip);
 
             // reset collision indicators
             bool is_absorbed = false;
