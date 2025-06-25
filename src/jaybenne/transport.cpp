@@ -151,6 +151,7 @@ TaskStatus TransportPhotons(MeshData<Real> *md, const Real t_start, const Real d
             [[maybe_unused]] auto mscatter = mscattering;
             [[maybe_unused]] auto opac = opacity;
             [[maybe_unused]] auto scatter = scattering;
+            [[maybe_unused]] auto eost = eos;
             if constexpr (FT == FrequencyType::gray) {
               // TODO: use TotalScatteringCoefficient(rho, temp), when available
               ss = vmesh(b, fjh::scattering_opacity(), kp, jp, ip);
@@ -158,7 +159,7 @@ TaskStatus TransportPhotons(MeshData<Real> *md, const Real t_start, const Real d
             } else if constexpr (FT == FrequencyType::multigroup) {
               const Real &rho = vmesh(b, fjh::density(), kp, jp, ip);
               const Real &sie = vmesh(b, fjh::sie(), kp, jp, ip);
-              const Real temp = eos.TemperatureFromDensityInternalEnergy(rho, sie);
+              const Real temp = eost.TemperatureFromDensityInternalEnergy(rho, sie);
               ss = scatter.TotalScatteringCoefficient(rho, temp, ee);
               aa = opac.AbsorptionCoefficient(rho, temp, ee);
             }
