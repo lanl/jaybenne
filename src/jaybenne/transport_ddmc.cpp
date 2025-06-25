@@ -38,9 +38,6 @@ TaskStatus TransportPhotons_DDMC(MeshData<Real> *md, const Real t_start, const R
   auto pm = md->GetParentPointer();
   auto &resolved_pkgs = pm->resolved_packages;
   auto &jb_pkg = pm->packages.Get("jaybenne");
-  auto &eos = jb_pkg->template Param<EOS>("eos_d");
-  auto &mopacity = jb_pkg->template Param<MeanOpacity>("mopacity_d");
-  auto &mscattering = jb_pkg->template Param<MeanScattering>("mscattering_d");
   auto &rng_pool = jb_pkg->template Param<RngPool>("rng_pool");
   const Real vv = jb_pkg->template Param<Real>("speed_of_light");
   const Real ske = 0.5 * SQR(vv);

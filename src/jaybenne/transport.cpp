@@ -39,15 +39,10 @@ TaskStatus TransportPhotons(MeshData<Real> *md, const Real t_start, const Real d
   auto &eos = jb_pkg->template Param<EOS>("eos_d");
   Opacity opacity;
   Scattering scattering;
-  MeanOpacity mopacity;
-  MeanScattering mscattering;
   int n_nubins = JaybenneNull<int>();
   Real numin = JaybenneNull<Real>();
   Real numax = JaybenneNull<Real>();
-  if constexpr (FT == FrequencyType::gray) {
-    mopacity = jb_pkg->template Param<MeanOpacity>("mopacity_d");
-    mscattering = jb_pkg->template Param<MeanScattering>("mscattering_d");
-  } else if constexpr (FT == FrequencyType::multigroup) {
+  if constexpr (FT == FrequencyType::multigroup) {
     opacity = jb_pkg->template Param<Opacity>("opacity_d");
     scattering = jb_pkg->template Param<Scattering>("scattering_d");
     n_nubins = jb_pkg->template Param<int>("n_nubins");
@@ -147,8 +142,6 @@ TaskStatus TransportPhotons(MeshData<Real> *md, const Real t_start, const Real d
             const Real &ff = vmesh(b, fj::fleck_factor(), kp, jp, ip);
             Real ss = JaybenneNull<Real>();
             Real aa = JaybenneNull<Real>();
-            [[maybe_unused]] auto mopac = mopacity;
-            [[maybe_unused]] auto mscatter = mscattering;
             [[maybe_unused]] auto opac = opacity;
             [[maybe_unused]] auto scatter = scattering;
             [[maybe_unused]] auto eost = eos;
