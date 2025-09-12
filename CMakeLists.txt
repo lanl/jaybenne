@@ -98,6 +98,8 @@ if(JAYBENNE_ENABLE_HDF5)
       "-DJAYBENNE_ENABLE_HDF5=OFF")
   endif()
   set(SINGULARITY_USE_HDF5 ON CACHE BOOL "" FORCE)
+  set(SINGULARITY_USE_SPINER ON CACHE BOOL "" FORCE)
+  set(SINGULARITY_USE_SPINER_WITH_HDF5 ON CACHE BOOL "" FORCE)
   set(PARTHENON_DISABLE_HDF5 OFF CACHE BOOL "" FORCE)
 else()
   set(SINGULARITY_USE_HDF5 OFF CACHE BOOL "" FORCE)
@@ -152,8 +154,10 @@ execute_process(COMMAND patch -N -s -V never
 # using both singularity-eos and singularity-opac together
 
 ## singularity eos
-# message("Configuring singularity-eos")
-# add_subdirectory(external/singularity-eos singularity-eos)
+if (NOT TARGET singularity-eos::singularity-eos)
+  message("Configuring singularity-eos")
+  add_subdirectory(external/singularity-eos singularity-eos)
+endif()
 
 ## singularity opac
 # message("Configuring singularity-opac")

@@ -18,8 +18,15 @@
 
 namespace mcblock {
 
-using EOS = singularity::Variant<singularity::UnitSystem<singularity::IdealGas>,
-                                 singularity::IdealGas>;
+using EOS =
+    singularity::Variant<singularity::UnitSystem<singularity::IdealGas>,
+                         singularity::IdealGas
+#ifdef SPINER_USE_HDF
+                         ,
+                         singularity::UnitSystem<singularity::SpinerEOSDependsRhoT>,
+                         singularity::UnitSystem<singularity::SpinerEOSDependsRhoSie>
+#endif
+                         >;
 
 } // namespace mcblock
 

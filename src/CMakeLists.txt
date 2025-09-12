@@ -70,8 +70,8 @@ if(JAYBENNE_STANDALONE_MODE)
       $<BUILD_INTERFACE:${CMAKE_BINARY_DIR}/generated>)
 
   # singularity eos
-  message("Configuring singularity-eos for mcblock")
-  add_subdirectory(${CMAKE_SOURCE_DIR}/external/singularity-eos ${CMAKE_BINARY_DIR}/singularity-eos)
+  # message("Configuring singularity-eos for mcblock")
+  # add_subdirectory(${CMAKE_SOURCE_DIR}/external/singularity-eos ${CMAKE_BINARY_DIR}/singularity-eos)
 
 endif()
 

@@ -24,8 +24,10 @@ add_library(lib_jaybenne_package ${package_sources} ${package_headers}
                                  ${package_utils})
 target_compile_definitions(lib_jaybenne_package
                            PRIVATE PORTABILITY_STRATEGY_KOKKOS)
-target_link_libraries(lib_jaybenne_package PUBLIC Parthenon::parthenon)
-target_include_directories(lib_jaybenne_package PRIVATE Parthenon::parthenon)
+target_link_libraries(lib_jaybenne_package PUBLIC
+  Parthenon::parthenon singularity-eos::singularity-eos)
+target_include_directories(lib_jaybenne_package PRIVATE
+  Parthenon::parthenon singularity-eos::singularity-eos)
 target_include_directories(
   lib_jaybenne_package
   PUBLIC $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}>
