@@ -1,5 +1,5 @@
 # ========================================================================================
-# (C) (or copyright) 2023-2024. Triad National Security, LLC. All rights
+# (C) (or copyright) 2023-2025. Triad National Security, LLC. All rights
 # reserved.
 #
 # This program was produced under U.S. Government contract 89233218CNA000001 for
@@ -70,8 +70,8 @@ if(JAYBENNE_STANDALONE_MODE)
       $<BUILD_INTERFACE:${CMAKE_BINARY_DIR}/generated>)
 
   # singularity eos
-  message("Configuring singularity-eos for mcblock")
-  add_subdirectory(${CMAKE_SOURCE_DIR}/external/singularity-eos ${CMAKE_BINARY_DIR}/singularity-eos)
+  # message("Configuring singularity-eos for mcblock")
+  # add_subdirectory(${CMAKE_SOURCE_DIR}/external/singularity-eos ${CMAKE_BINARY_DIR}/singularity-eos)
 
 endif()
 
