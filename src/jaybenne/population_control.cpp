@@ -24,7 +24,7 @@ namespace jaybenne {
 //! particles. The expectation value is then the number of source particles: N_rm ~ P_rm *
 //! N_act = (1 - N_src / N_act) * N_act = N_act - N_src The remaining particles then each
 //! have their energy weight renormalized.
-TaskStatus ControlPopulation(MeshData<Real> *md) {
+TaskStatus ControlPopulation(MeshData<Real> *md, const int ncycle, const int ncycle_out) {
   namespace fj = field::jaybenne;
   namespace ph = particle::photons;
 
@@ -32,6 +32,7 @@ TaskStatus ControlPopulation(MeshData<Real> *md) {
   auto &resolved_pkgs = pm->resolved_packages;
   auto &jb_pkg = pm->packages.Get("jaybenne");
   auto &rng_pool = jb_pkg->template Param<RngPool>("rng_pool");
+  const auto &diagnostic_level = jb_pkg->template Param<int>("diagnostic_level");
 
   // Create SparsePack
   static auto desc =
@@ -84,6 +85,34 @@ TaskStatus ControlPopulation(MeshData<Real> *md) {
           Kokkos::atomic_add(&actnum, 1.0);
         }
       });
+
+  //--------------------------------------------------------------------------------------
+  // print total number of active particles at a certain diagnostic level
+  if (diagnostic_level >= 1 && ncycle % ncycle_out == 0) {
+    Real totag = 0.0;
+    parthenon::par_reduce(
+        parthenon::loop_pattern_mdrange_tag, "ControlPopulation::report-tot-active-1",
+        DevExecSpace(), 0, nblocks - 1, kb.s, kb.e, jb.s, jb.e, ib.s, ib.e,
+        KOKKOS_LAMBDA(const int b, const int k, const int j, const int i, Real &tota) {
+          tota += vmesh(b, fj::active_num_per_cell(), k, j, i);
+        },
+        Kokkos::Sum<Real>(totag));
+
+    Real num_tot_active_old;
+
+    // reduce over MPI ranks
+#ifdef MPI_PARALLEL
+    MPI_Reduce(&totag, &num_tot_active_old, 1, MPI_PARTHENON_REAL, MPI_SUM, 0,
+               MPI_COMM_WORLD);
+#else
+    num_tot_active_old = totag;
+#endif
+
+    // print total on rank 0
+    if (Globals::my_rank == 0) {
+      std::cout << "Post-IMC # active particles: " << num_tot_active_old << std::endl;
+    }
+  }
 
   //--------------------------------------------------------------------------------------
   // sample probability to mark particle for removal
@@ -151,6 +180,35 @@ TaskStatus ControlPopulation(MeshData<Real> *md) {
           Kokkos::atomic_add(&actnum, 1.0);
         }
       });
+
+  //--------------------------------------------------------------------------------------
+  // print total number of active particles at a certain diagnostic level
+  if (diagnostic_level >= 1 && ncycle % ncycle_out == 0) {
+    // reduce over blocks and cells
+    Real totag = 0.0;
+    parthenon::par_reduce(
+        parthenon::loop_pattern_mdrange_tag, "ControlPopulation::report-tot-active-2",
+        DevExecSpace(), 0, nblocks - 1, kb.s, kb.e, jb.s, jb.e, ib.s, ib.e,
+        KOKKOS_LAMBDA(const int b, const int k, const int j, const int i, Real &tota) {
+          tota += vmesh(b, fj::active_num_per_cell(), k, j, i);
+        },
+        Kokkos::Sum<Real>(totag));
+
+    Real num_tot_active;
+
+    // reduce over MPI ranks
+#ifdef MPI_PARALLEL
+    MPI_Reduce(&totag, &num_tot_active, 1, MPI_PARTHENON_REAL, MPI_SUM, 0,
+               MPI_COMM_WORLD);
+#else
+    num_tot_active = totag;
+#endif
+
+    // print total on rank 0
+    if (Globals::my_rank == 0) {
+      std::cout << "Post-PopCon # active particles: " << num_tot_active << std::endl;
+    }
+  }
 
   //--------------------------------------------------------------------------------------
   // renormalize surviving particle energy weights, to conserve energy
