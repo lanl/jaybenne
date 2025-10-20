@@ -13,6 +13,7 @@
 
 // Jaybenne includes
 #include "jaybenne.hpp"
+#include "jaybenne_utils.hpp"
 
 namespace jaybenne {
 
@@ -89,24 +90,14 @@ TaskStatus ControlPopulation(MeshData<Real> *md, const int ncycle, const int ncy
   //--------------------------------------------------------------------------------------
   // print total number of active particles at a certain diagnostic level
   if (diagnostic_level >= 1 && ncycle % ncycle_out == 0) {
-    Real totag = 0.0;
-    parthenon::par_reduce(
-        parthenon::loop_pattern_mdrange_tag, "ControlPopulation::report-tot-active-1",
-        DevExecSpace(), 0, nblocks - 1, kb.s, kb.e, jb.s, jb.e, ib.s, ib.e,
-        KOKKOS_LAMBDA(const int b, const int k, const int j, const int i, Real &tota) {
+    Real num_tot_active_old = 0.0;
+    global_sum_reduce(
+        nblocks, kb.s, kb.e, jb.s, jb.e, ib.s, ib.e,
+        "ControlPopulation::report-tot-active-1",
+        [&](const int &b, const int &k, const int &j, const int &i, Real &tota) {
           tota += vmesh(b, fj::active_num_per_cell(), k, j, i);
         },
-        Kokkos::Sum<Real>(totag));
-
-    Real num_tot_active_old;
-
-    // reduce over MPI ranks
-#ifdef MPI_PARALLEL
-    MPI_Reduce(&totag, &num_tot_active_old, 1, MPI_PARTHENON_REAL, MPI_SUM, 0,
-               MPI_COMM_WORLD);
-#else
-    num_tot_active_old = totag;
-#endif
+        num_tot_active_old);
 
     // print total on rank 0
     if (Globals::my_rank == 0) {
@@ -184,25 +175,14 @@ TaskStatus ControlPopulation(MeshData<Real> *md, const int ncycle, const int ncy
   //--------------------------------------------------------------------------------------
   // print total number of active particles at a certain diagnostic level
   if (diagnostic_level >= 1 && ncycle % ncycle_out == 0) {
-    // reduce over blocks and cells
-    Real totag = 0.0;
-    parthenon::par_reduce(
-        parthenon::loop_pattern_mdrange_tag, "ControlPopulation::report-tot-active-2",
-        DevExecSpace(), 0, nblocks - 1, kb.s, kb.e, jb.s, jb.e, ib.s, ib.e,
-        KOKKOS_LAMBDA(const int b, const int k, const int j, const int i, Real &tota) {
+    Real num_tot_active = 0.0;
+    global_sum_reduce(
+        nblocks, kb.s, kb.e, jb.s, jb.e, ib.s, ib.e,
+        "ControlPopulation::report-tot-active-2",
+        [&](const int &b, const int &k, const int &j, const int &i, Real &tota) {
           tota += vmesh(b, fj::active_num_per_cell(), k, j, i);
         },
-        Kokkos::Sum<Real>(totag));
-
-    Real num_tot_active;
-
-    // reduce over MPI ranks
-#ifdef MPI_PARALLEL
-    MPI_Reduce(&totag, &num_tot_active, 1, MPI_PARTHENON_REAL, MPI_SUM, 0,
-               MPI_COMM_WORLD);
-#else
-    num_tot_active = totag;
-#endif
+        num_tot_active);
 
     // print total on rank 0
     if (Globals::my_rank == 0) {
