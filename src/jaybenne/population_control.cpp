@@ -94,7 +94,8 @@ TaskStatus ControlPopulation(MeshData<Real> *md, const int ncycle, const int ncy
     global_sum_reduce(
         nblocks, kb.s, kb.e, jb.s, jb.e, ib.s, ib.e,
         "ControlPopulation::report-tot-active-1",
-        [&](const int &b, const int &k, const int &j, const int &i, Real &tota) {
+        KOKKOS_LAMBDA(const int &b, const int &k, const int &j, const int &i,
+                      Real &tota) {
           tota += vmesh(b, fj::active_num_per_cell(), k, j, i);
         },
         num_tot_active_old);
@@ -179,7 +180,8 @@ TaskStatus ControlPopulation(MeshData<Real> *md, const int ncycle, const int ncy
     global_sum_reduce(
         nblocks, kb.s, kb.e, jb.s, jb.e, ib.s, ib.e,
         "ControlPopulation::report-tot-active-2",
-        [&](const int &b, const int &k, const int &j, const int &i, Real &tota) {
+        KOKKOS_LAMBDA(const int &b, const int &k, const int &j, const int &i,
+                      Real &tota) {
           tota += vmesh(b, fj::active_num_per_cell(), k, j, i);
         },
         num_tot_active);

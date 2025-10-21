@@ -45,20 +45,16 @@ par_reduce_inner(team_mbr_t team_member, const int kl, const int ku, const int j
 
 template <typename Function, typename U>
 void global_sum_reduce(const int nblocks, const int kl, const int ku, const int jl,
-                       const int ju, const int il, const int iu, const std::string label,
+                       const int ju, const int il, const int iu, const std::string &label,
                        const Function &function, U &globally_reduced) {
   PARTHENON_DEBUG_REQUIRE(std::is_scalar<U>::value,
                           "global_sum_reduce only works on scalars.");
 
   // reduce over local blocks
   U totag = 0;
-  parthenon::par_reduce(
-      parthenon::loop_pattern_mdrange_tag, label, DevExecSpace(), 0, nblocks - 1, kl, ku,
-      jl, ju, il, iu,
-      KOKKOS_LAMBDA(const int b, const int k, const int j, const int i, U &tota) {
-        function(b, k, j, i, tota);
-      },
-      Kokkos::Sum<U>(totag));
+  parthenon::par_reduce(parthenon::loop_pattern_mdrange_tag, "tstlabel", DevExecSpace(),
+                        0, nblocks - 1, kl, ku, jl, ju, il, iu, function,
+                        Kokkos::Sum<U>(totag));
   Kokkos::fence();
 
   // reduce over MPI ranks
