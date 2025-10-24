@@ -17,6 +17,8 @@
 #include <parthenon/driver.hpp>
 #include <parthenon/package.hpp>
 
+namespace jaybenne {
+
 template <typename Function, typename T>
 KOKKOS_FORCEINLINE_FUNCTION void
 par_reduce_inner(team_mbr_t team_member, const int kl, const int ku, const int jl,
@@ -41,11 +43,36 @@ par_reduce_inner(team_mbr_t team_member, const int kl, const int ku, const int j
       reduction);
 }
 
+template <typename ExecSpace, typename Function, typename U>
+void global_sum_reduce(const std::string &label, const ExecSpace &space,
+                       const int nblocks, const int kl, const int ku, const int jl,
+                       const int ju, const int il, const int iu, const Function &function,
+                       U &globally_reduced) {
+  PARTHENON_DEBUG_REQUIRE(std::is_scalar<U>::value,
+                          "global_sum_reduce only works on scalars.");
+
+  // reduce over local blocks
+  U totag = 0;
+  parthenon::par_reduce(parthenon::loop_pattern_mdrange_tag, label, space, 0, nblocks - 1,
+                        kl, ku, jl, ju, il, iu, function, Kokkos::Sum<U>(totag));
+  Kokkos::fence();
+
+  // reduce over MPI ranks
+#ifdef MPI_PARALLEL
+  MPI_Reduce(&totag, &globally_reduced, 1, MPITypeMap<U>::type(), MPI_SUM, 0,
+             MPI_COMM_WORLD);
+#else
+  globally_reduced = totag;
+#endif
+}
+
 KOKKOS_FORCEINLINE_FUNCTION bool fuzzy_equal(const Real &a, const Real &b, const Real &c,
                                              const Real &eps) {
   PARTHENON_DEBUG_REQUIRE(c > 0.0, "c input must be positive");
   // c input makes user decide metric
   return std::abs(a - b) < c * eps;
 }
+
+} // namespace jaybenne
 
 #endif // JAYBENNE_JAYBENNE_UTILS_HPP_

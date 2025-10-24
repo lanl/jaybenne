@@ -84,10 +84,10 @@ TaskStatus UpdateDerivedTransportFields(MeshData<Real> *md, const Real dt);
 template <typename T>
 TaskStatus EvaluateRadiationEnergy(T *md);
 TaskStatus UpdateFluid(MeshData<Real> *md);
-TaskStatus ControlPopulation(MeshData<Real> *md);
+TaskStatus ControlPopulation(MeshData<Real> *md, const int ncycle, const int ncycle_out);
 
 // TaskCollection for radiation step
-TaskCollection RadiationStep(Mesh *pmesh, const Real t_start, const Real dt);
+TaskCollection RadiationStep(Mesh *pmesh, const SimTime &tm, const Real dt);
 
 // Functions
 Real EstimateTimestepMesh(MeshData<Real> *md);

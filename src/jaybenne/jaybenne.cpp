@@ -17,6 +17,7 @@
 // Jaybenne includes
 #include "jaybenne.hpp"
 #include "jaybenne_utils.hpp"
+#include <utils/robust.hpp>
 
 namespace jaybenne {
 
@@ -65,8 +66,15 @@ TaskStatus MeshReceive(MeshData<Real> *md) {
 //! \brief Construct the collection of tasks that contribute to a complete radiation cycle
 //!        from t to t + dt, including setting up derived quantities, sourcing particles,
 //!        transporting particles, and communicating particles.
-TaskCollection RadiationStep(Mesh *pmesh, const Real t_start, const Real dt) {
+TaskCollection RadiationStep(Mesh *pmesh, const SimTime &tm, const Real dt) {
   namespace fj = field::jaybenne;
+
+  // short-cuts
+  const Real &t_start = tm.time;
+  const int &ncycle = tm.ncycle;
+  const int &ncycle_out = tm.ncycle_out;
+  PARTHENON_REQUIRE(fuzzy_equal(tm.dt, dt, dt, parthenon::robust::EPS()),
+                    "Integrator dt (RadiationStep arg) must equal SimTime dt");
 
   auto &jb_pkg = pmesh->packages.Get("jaybenne");
   const auto &max_transport_iterations =
@@ -163,7 +171,8 @@ TaskCollection RadiationStep(Mesh *pmesh, const Real t_start, const Real dt) {
     auto update_fluid = tl.AddTask(eval_rad, jaybenne::UpdateFluid, base.get());
 
     // Control particle population
-    auto control_pop = tl.AddTask(update_fluid, jaybenne::ControlPopulation, base.get());
+    auto control_pop = tl.AddTask(update_fluid, jaybenne::ControlPopulation, base.get(),
+                                  ncycle, ncycle_out);
 
     // TODO: Defrag particles? Verify parth swarm defrag mechanics before uncommenting
     // auto defrag_pop = tl.AddTask(control_pop, jaybenne::DefragParticles, base.get());
@@ -190,6 +199,12 @@ std::shared_ptr<StateDescriptor>
 Initialize_impl(ParameterInput *pin, EOS &eos,
                 singularity::RuntimePhysicalConstants units, std::string block_name) {
   auto pkg = std::make_shared<StateDescriptor>("jaybenne");
+
+  // Diagnostics verbosity
+  int diagnostic_level = pin->GetOrAddInteger(block_name, "diagnostic_level", 0);
+  pkg->AddParam<>("diagnostic_level", diagnostic_level);
+  PARTHENON_REQUIRE(diagnostic_level >= 0 && diagnostic_level <= 1,
+                    "diagnostic_level is currently restricted to 0 or 1");
 
   // Total number of particles
   int num_particles = pin->GetInteger(block_name, "num_particles");

@@ -43,7 +43,7 @@ TaskListStatus McblockDriver::Step() {
   const Real &dt = integrator->dt;
 
   // One cycle of radiation transport
-  auto status = jaybenne::RadiationStep(pmesh, this->tm.time, integrator->dt).Execute();
+  auto status = jaybenne::RadiationStep(pmesh, tm, dt).Execute();
   if (status != TaskListStatus::complete) return status;
 
   // compute new dt
