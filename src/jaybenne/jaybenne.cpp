@@ -106,6 +106,7 @@ TaskCollection RadiationStep(Mesh *pmesh, const SimTime &tm, const Real dt) {
   auto &reg = tc.AddRegion(num_partitions);
   for (int i = 0; i < num_partitions; i++) {
     auto &tl = reg[i];
+
     // Get base register for particles and DDMC fields register (if applicable)
     auto &base = pmesh->mesh_data.GetOrAdd("base", i);
     auto &md_ddmc = pmesh->mesh_data.GetOrAdd("ddmc_reg", i);
@@ -272,15 +273,17 @@ Initialize_impl(ParameterInput *pin, EOS &eos,
   pkg->AddParam<>("eos_d", eos.GetOnDevice());
 
   // Swarm and swarm variables
-  Metadata swarm_metadata({Metadata::Provides, Metadata::None});
+  Metadata swarm_metadata({Metadata::Provides, Metadata::None, Metadata::Restart});
   pkg->AddSwarm(photons_swarm_name, swarm_metadata);
-  Metadata mreal({Metadata::Real});
+  Metadata mreal({Metadata::Real, Metadata::Restart});
   pkg->AddSwarmValue(particle::photons::time::name(), photons_swarm_name, mreal);
   pkg->AddSwarmValue(particle::photons::weight::name(), photons_swarm_name, mreal);
   pkg->AddSwarmValue(particle::photons::energy::name(), photons_swarm_name, mreal);
-  Metadata mrealv({Metadata::Real, Metadata::Vector}, std::vector<int>{3});
+  Metadata mrealv({Metadata::Real, Metadata::Vector, Metadata::Restart},
+                  std::vector<int>{3});
   pkg->AddSwarmValue(particle::photons::v::name(), photons_swarm_name, mrealv);
-  Metadata mintv({Metadata::Integer, Metadata::Vector}, std::vector<int>{3});
+  Metadata mintv({Metadata::Integer, Metadata::Vector, Metadata::Restart},
+                 std::vector<int>{3});
   pkg->AddSwarmValue(particle::photons::ijk::name(), photons_swarm_name, mintv);
 
   // Radiation fields
@@ -288,12 +291,15 @@ Initialize_impl(ParameterInput *pin, EOS &eos,
   pkg->AddField(field::jaybenne::energy_tally::name(), m);
   pkg->AddField(field::jaybenne::fleck_factor::name(), m);
 
-  // Sourcing fields
+  // Sourcing and tallying fields (recalculated each time step)
   Metadata m_onecopy({Metadata::Cell, Metadata::OneCopy});
   pkg->AddField(field::jaybenne::source_ew_per_cell::name(), m_onecopy);
-  pkg->AddField(field::jaybenne::source_num_per_cell::name(), m_onecopy);
   pkg->AddField(field::jaybenne::delta_num_per_cell::name(), m_onecopy);
   pkg->AddField(field::jaybenne::energy_delta::name(), m_onecopy);
+
+  // Sourcing fields needed on restart
+  Metadata m_onecopy_rst({Metadata::Cell, Metadata::OneCopy, Metadata::Restart});
+  pkg->AddField(field::jaybenne::source_num_per_cell::name(), m_onecopy_rst);
 
   // Population control fields
   pkg->AddField(field::jaybenne::active_ew_per_cell::name(), m_onecopy);

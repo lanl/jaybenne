@@ -136,5 +136,7 @@ jobs:
           ./stepdiff_smr.py --executable $JAYBENNE_EXECUTABLE \
                             --input ../inputs/stepdiff_smr_hybrid.in --use_mpiexec
           ./stepdiff_smr.py --executable $JAYBENNE_EXECUTABLE \
+                            -r ./stepdiff.out1.00001.rhdf --use_mpiexec
+          ./stepdiff_smr.py --executable $JAYBENNE_EXECUTABLE \
                             --input ../inputs/stepdiff_smr_hybrid.in --use_mpiexec \
                             --mpi_nthreads 8 --mpi_oversubscribe
