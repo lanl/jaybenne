@@ -275,15 +275,13 @@ Initialize_impl(ParameterInput *pin, EOS &eos,
   // Swarm and swarm variables
   Metadata swarm_metadata({Metadata::Provides, Metadata::None, Metadata::Restart});
   pkg->AddSwarm(photons_swarm_name, swarm_metadata);
-  Metadata mreal({Metadata::Real, Metadata::Restart});
+  Metadata mreal({Metadata::Real});
   pkg->AddSwarmValue(particle::photons::time::name(), photons_swarm_name, mreal);
   pkg->AddSwarmValue(particle::photons::weight::name(), photons_swarm_name, mreal);
   pkg->AddSwarmValue(particle::photons::energy::name(), photons_swarm_name, mreal);
-  Metadata mrealv({Metadata::Real, Metadata::Vector, Metadata::Restart},
-                  std::vector<int>{3});
+  Metadata mrealv({Metadata::Real, Metadata::Vector}, std::vector<int>{3});
   pkg->AddSwarmValue(particle::photons::v::name(), photons_swarm_name, mrealv);
-  Metadata mintv({Metadata::Integer, Metadata::Vector, Metadata::Restart},
-                 std::vector<int>{3});
+  Metadata mintv({Metadata::Integer, Metadata::Vector}, std::vector<int>{3});
   pkg->AddSwarmValue(particle::photons::ijk::name(), photons_swarm_name, mintv);
 
   // Radiation fields
