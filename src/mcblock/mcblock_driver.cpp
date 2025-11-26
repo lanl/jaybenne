@@ -36,6 +36,7 @@ McblockDriver::McblockDriver(ParameterInput *pin, ApplicationInput *app_in, Mesh
 //! \brief Defines the task ordering for an integrator timestep.
 //!        Overrides the parthenon EvolutionDriver virtual method.
 TaskListStatus McblockDriver::Step() {
+  PARTHENON_INSTRUMENT
 
   // Set numerical timestep
   // Particles are always updated in a first order sense; RK substeps are ignored.
@@ -56,6 +57,7 @@ TaskListStatus McblockDriver::Step() {
 //! \fn  TaskCollection McblockDriver::HostUpdateTasks
 //! \brief Update host material properties after radiation transport step.
 TaskCollection McblockDriver::HostUpdateTasks() {
+  PARTHENON_INSTRUMENT
   using namespace ::parthenon::Update;
   TaskCollection tc;
   TaskID none(0);

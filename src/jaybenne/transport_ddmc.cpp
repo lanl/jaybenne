@@ -27,6 +27,7 @@ namespace jaybenne {
 //! \brief
 template <FrequencyType FT>
 TaskStatus TransportPhotons_DDMC(MeshData<Real> *md, const Real t_start, const Real dt) {
+  PARTHENON_INSTRUMENT
   namespace fj = field::jaybenne;
   namespace fjh = field::jaybenne::host;
   namespace sp = swarm_position;

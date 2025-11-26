@@ -48,6 +48,7 @@ void global_sum_reduce(const std::string &label, const ExecSpace &space,
                        const int nblocks, const int kl, const int ku, const int jl,
                        const int ju, const int il, const int iu, const Function &function,
                        U &globally_reduced) {
+  PARTHENON_INSTRUMENT
   PARTHENON_DEBUG_REQUIRE(std::is_scalar<U>::value,
                           "global_sum_reduce only works on scalars.");
 

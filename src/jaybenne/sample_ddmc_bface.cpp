@@ -79,6 +79,7 @@ void SampleFace3D(const int i1_l, const int i2_l, const Real dx1, const Real dx2
 
 // sample face for particles coming from a coarser block DDMC cell
 TaskStatus SampleDDMCBlockFace(MeshData<Real> *md) {
+  PARTHENON_INSTRUMENT
   namespace fj = field::jaybenne;
   namespace fjh = field::jaybenne::host;
   namespace sp = swarm_position;

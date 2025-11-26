@@ -209,6 +209,7 @@ std::shared_ptr<StateDescriptor> Initialize(ParameterInput *pin) {
 //! \fn  void ProblemGenerator
 //! \brief Generate initial conditions for problems
 void ProblemGenerator(MeshBlock *pmb, ParameterInput *pin) {
+  PARTHENON_INSTRUMENT
   namespace fm = field::material;
 
   auto mbd = pmb->meshblock_data.Get().get();
@@ -289,6 +290,7 @@ void ProblemGenerator(MeshBlock *pmb, ParameterInput *pin) {
 //! \fn void UpdateDerived
 //! \brief Updates Mcblock derived variables following a Jaybenne step
 void UpdateDerived(MeshData<Real> *md) {
+  PARTHENON_INSTRUMENT
   namespace fm = field::material;
   using parthenon::MakePackDescriptor;
   auto pm = md->GetParentPointer();
@@ -348,6 +350,7 @@ void UpdateDerived(MeshData<Real> *md) {
 //! \fn void PostInitialization
 //! \brief
 void PostInitialization(MeshBlock *pmb, ParameterInput *pin) {
+  PARTHENON_INSTRUMENT
   using parthenon::MakePackDescriptor;
   auto md = pmb->meshblock_data.Get().get();
   auto pm = md->GetParentPointer();
