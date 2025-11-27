@@ -66,16 +66,19 @@ std::shared_ptr<StateDescriptor> Initialize(ParameterInput *pin) {
 
   // Density and total energy fields
   Metadata m = Metadata({Metadata::Cell, Metadata::FillGhost, Metadata::OneCopy,
-                         Metadata::ForceRemeshComm});
+                         Metadata::ForceRemeshComm, Metadata::Restart});
   pkg->AddField(field::material::density::name(), m);
   pkg->AddField(field::material::internal_energy::name(), m);
 
-  // Volumetric internal energy and specific internal energy
+  // opacity fields
   m = Metadata({Metadata::Cell, Metadata::Derived, Metadata::OneCopy});
-  pkg->AddField(field::material::sie::name(), m);
   // TODO: maybe worth filling ghosts for expedited DDMC stencil
   pkg->AddField(field::material::absorption_opacity::name(), m);
   pkg->AddField(field::material::scattering_opacity::name(), m);
+
+  // Volumetric internal energy and specific internal energy
+  m = Metadata({Metadata::Cell, Metadata::Derived, Metadata::OneCopy, Metadata::Restart});
+  pkg->AddField(field::material::sie::name(), m);
 
   // Equation of state
   const Real gamma = pin->GetOrAddReal("mcblock", "gamma", 1.66666666667);

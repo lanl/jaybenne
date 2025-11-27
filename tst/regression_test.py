@@ -214,6 +214,12 @@ def get_default_parser():
         action="store_true",
         help="Whether to generate visual output.",
     )
+    parser.add_argument(
+        "--restart",
+        type=str,
+        default=None,
+        help="Restart file (generated locally to run directory)",
+    )
     return parser
 
 
@@ -272,6 +278,7 @@ def run_problem(
     use_mpiexec,
     oversubscribe,
     mpi_nthreads,
+    restart_file=None,
 ):
     if executable is None:
         executable = os.path.join(ABS_BUILD_DIR, "mcblock")
@@ -303,7 +310,10 @@ def run_problem(
         preamble += ["mpiexec", "-n", f"{mpi_nthreads}"]
         if oversubscribe:
             preamble += ["--oversubscribe"]
+
     call(preamble + [executable, "-i", TEMPORARY_INPUT_FILE])
+    if restart_file is not None:
+        call(preamble + [executable, "-i", TEMPORARY_INPUT_FILE, "-r", restart_file])
 
     # Get last dump file
     dumpfiles = np.sort(glob.glob("*.phdf"))
@@ -358,6 +368,7 @@ def analytic_comparison(
         args.use_mpiexec,
         args.mpi_oversubscribe,
         args.mpi_nthreads,
+        args.restart,
     )
 
     # Loop over meshblocks and cells and compare each variable to its corresponding solution
