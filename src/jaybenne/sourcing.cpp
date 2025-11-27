@@ -30,6 +30,7 @@ namespace jaybenne {
 //! TODO(BRR) modify interface so we don't need t_start, dt for initialization
 template <typename T, SourceType ST, FrequencyType FT>
 TaskStatus SourcePhotons(T *md, const Real t_start, const Real dt) {
+  PARTHENON_INSTRUMENT
   namespace fj = field::jaybenne;
   namespace fjh = field::jaybenne::host;
   namespace ph = particle::photons;

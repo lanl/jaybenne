@@ -27,6 +27,7 @@ namespace jaybenne {
 //! \brief
 template <FrequencyType FT>
 TaskStatus TransportPhotons(MeshData<Real> *md, const Real t_start, const Real dt) {
+  PARTHENON_INSTRUMENT
   namespace fj = field::jaybenne;
   namespace fjh = field::jaybenne::host;
   namespace sp = swarm_position;
@@ -235,6 +236,7 @@ TaskStatus TransportPhotons(MeshData<Real> *md, const Real t_start, const Real d
 //! \brief Checks all particles on this mesh to see if they have reached the end
 //!        of the timestep. If not, further iterations of transport are indicated.
 TaskStatus CheckCompletion(MeshData<Real> *md, const Real t_end) {
+  PARTHENON_INSTRUMENT
   namespace ph = particle::photons;
 
   // Create SwarmPacks

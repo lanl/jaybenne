@@ -25,6 +25,7 @@ using TQ = TaskQualifier;
 
 // TODO(BRR) Move these methods to Parthenon
 TaskStatus MeshResetCommunication(MeshData<Real> *md) {
+  PARTHENON_INSTRUMENT
   const int nblocks = md->NumBlocks();
   for (int n = 0; n < nblocks; n++) {
     auto &mbd = md->GetBlockData(n);
@@ -36,6 +37,7 @@ TaskStatus MeshResetCommunication(MeshData<Real> *md) {
 }
 
 TaskStatus MeshSend(MeshData<Real> *md) {
+  PARTHENON_INSTRUMENT
   const int nblocks = md->NumBlocks();
   for (int n = 0; n < nblocks; n++) {
     auto &mbd = md->GetBlockData(n);
@@ -47,6 +49,7 @@ TaskStatus MeshSend(MeshData<Real> *md) {
 }
 
 TaskStatus MeshReceive(MeshData<Real> *md) {
+  PARTHENON_INSTRUMENT
   TaskStatus status = TaskStatus::complete;
   const int nblocks = md->NumBlocks();
   for (int n = 0; n < nblocks; n++) {
@@ -67,6 +70,7 @@ TaskStatus MeshReceive(MeshData<Real> *md) {
 //!        from t to t + dt, including setting up derived quantities, sourcing particles,
 //!        transporting particles, and communicating particles.
 TaskCollection RadiationStep(Mesh *pmesh, const SimTime &tm, const Real dt) {
+  PARTHENON_INSTRUMENT
   namespace fj = field::jaybenne;
 
   // short-cuts
@@ -380,6 +384,7 @@ std::shared_ptr<StateDescriptor> Initialize(ParameterInput *pin, Opacity &opacit
 //! \fn  Real Jaybenne::EstimateTimestepMesh
 //! \brief Compute radiation timestep
 Real EstimateTimestepMesh(MeshData<Real> *md) {
+  PARTHENON_INSTRUMENT
   // TODO(BRR) This should be provided by mcblock or other downstream codes... jaybenne
   // should have no timestep constraint.
   return md->GetParentPointer()->packages.Get("jaybenne")->template Param<Real>("dt");
@@ -395,6 +400,7 @@ Real EstimateTimestepMesh(MeshData<Real> *md) {
 //!               then f = 1 / (1 + 4 * J * dt / (rho * cv * T))
 template <FrequencyType FT>
 TaskStatus UpdateDerivedTransportFieldsImpl(MeshData<Real> *md, const Real dt) {
+  PARTHENON_INSTRUMENT
   namespace fj = field::jaybenne;
   namespace fjh = field::jaybenne::host;
 
@@ -670,6 +676,7 @@ TaskStatus UpdateDerivedTransportFieldsImpl(MeshData<Real> *md, const Real dt) {
 //!         NOTE: if J = opacP * c * aR * T^4,
 //!               then f = 1 / (1 + 4 * J * dt / (rho * cv * T))
 TaskStatus UpdateDerivedTransportFields(MeshData<Real> *md, const Real dt) {
+  PARTHENON_INSTRUMENT
   auto pm = md->GetParentPointer();
   auto &jbn = pm->packages.Get("jaybenne");
   auto &frequency_type = jbn->template Param<FrequencyType>("frequency_type");
@@ -688,6 +695,7 @@ TaskStatus UpdateDerivedTransportFields(MeshData<Real> *md, const Real dt) {
 //! TODO(BRR) We should re-enable this but add a runtime parameter that sets the
 //! fractional fragmentation of the memory pool above which we defragment.
 TaskStatus DefragParticles(MeshData<Real> *md) {
+  PARTHENON_INSTRUMENT
   auto pm = md->GetParentPointer();
   auto &resolved_pkgs = pm->resolved_packages;
   auto &jbn = pm->packages.Get("jaybenne");
@@ -710,6 +718,7 @@ TaskStatus DefragParticles(MeshData<Real> *md) {
 //! \brief
 template <typename T>
 TaskStatus EvaluateRadiationEnergy(T *md) {
+  PARTHENON_INSTRUMENT
   namespace fj = field::jaybenne;
   namespace ph = particle::photons;
 
@@ -765,6 +774,7 @@ TaskStatus EvaluateRadiationEnergy(T *md) {
 //! \brief Initialize radiation based on material temperature and either thermal or
 //!        zero initial radiation.
 void InitializeRadiation(MeshBlockData<Real> *mbd, const bool is_thermal) {
+  PARTHENON_INSTRUMENT
   auto &jb_pkg = mbd->GetBlockPointer()->packages.Get("jaybenne");
   const auto &fd = jb_pkg->template Param<FrequencyType>("frequency_type");
 
@@ -786,6 +796,7 @@ void InitializeRadiation(MeshBlockData<Real> *mbd, const bool is_thermal) {
 //! \fn  TaskStatus UpdateFluid
 //! \brief
 TaskStatus UpdateFluid(MeshData<Real> *md) {
+  PARTHENON_INSTRUMENT
   namespace fj = field::jaybenne;
   namespace fjh = field::jaybenne::host;
 

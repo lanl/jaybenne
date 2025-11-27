@@ -26,6 +26,7 @@ namespace jaybenne {
 //! N_act = (1 - N_src / N_act) * N_act = N_act - N_src The remaining particles then each
 //! have their energy weight renormalized.
 TaskStatus ControlPopulation(MeshData<Real> *md, const int ncycle, const int ncycle_out) {
+  PARTHENON_INSTRUMENT
   namespace fj = field::jaybenne;
   namespace ph = particle::photons;
 
