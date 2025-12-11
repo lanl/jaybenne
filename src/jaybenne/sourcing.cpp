@@ -66,6 +66,7 @@ TaskStatus SourcePhotons(T *md, const Real t_start, const Real dt) {
   auto &rng_pool = jb_pkg->template Param<RngPool>("rng_pool");
   const int &num_particles = jb_pkg->template Param<int>("num_particles");
   const Real &dnpc_min = jb_pkg->template Param<Real>("dnpc_min");
+  const Real &emit_temp_th = jb_pkg->template Param<Real>("emit_temp_threshold");
   const Real &vv = jb_pkg->template Param<Real>("speed_of_light");
   const Real &sb = jb_pkg->template Param<Real>("stefan_boltzmann");
 
@@ -89,8 +90,40 @@ TaskStatus SourcePhotons(T *md, const Real t_start, const Real dt) {
   const int nx2 = jb.e - jb.s + 1;
   const int nx3 = kb.e - kb.s + 1;
   const int num_cells = nx1 * nx2 * nx3;
-  const Real npc = std::floor(static_cast<Real>(num_particles) /
-                              (num_cells * md->GetMeshPointer()->nbtotal));
+
+  Real npc = std::floor(static_cast<Real>(num_particles) /
+                        (num_cells * md->GetMeshPointer()->nbtotal));
+
+  if constexpr (ST == SourceType::emission) {
+    // adjust particle number per cell up if threshold temperature is used
+    if (emit_temp_th > 0.0) {
+      // count the number of cells above the temperature threshold
+      Real ncell_abv_th = 0.0;
+      global_sum_reduce(
+          "count-emitting-cells", DevExecSpace(), nblocks, kb.s, kb.e, jb.s, jb.e, ib.s,
+          ib.e,
+          KOKKOS_LAMBDA(const int &b, const int &k, const int &j, const int &i,
+                        Real &totth) {
+            const Real &rho = vmesh(b, fjh::density(), k, j, i);
+            const Real &sie = vmesh(b, fjh::sie(), k, j, i);
+            const Real temp = eos.TemperatureFromDensityInternalEnergy(rho, sie);
+            totth += (temp > emit_temp_th ? 1.0 : 0.0);
+          },
+          ncell_abv_th);
+
+      PARTHENON_REQUIRE(ncell_abv_th > 0.0,
+                        "emission source but all cells below threshold temperature!");
+
+      // calculate scaling factor on number per cell
+      const Real npratio =
+          static_cast<Real>(num_cells * md->GetMeshPointer()->nbtotal) / ncell_abv_th;
+      PARTHENON_DEBUG_REQUIRE(npratio >= 1.0,
+                              "more emitting cells than total cells in problem!");
+
+      // upgrade number of particles per (emitting) cell
+      npc = std::floor(npc * npratio);
+    }
+  }
 
   ParArray1D<int> nparticles("# particles per block", nblocks);
   ParArray2D<int> prefix_sum("prefix sums per block", nblocks, num_cells);
@@ -162,10 +195,16 @@ TaskStatus SourcePhotons(T *md, const Real t_start, const Real dt) {
               // NOTE(PDM): We hardcode snpc and sewpc below, but we could imagine
               // introducing supplementary functions/tasks that set these, or even
               // giving downstream codes the opportunity to set these themselves...
-              snpc = npc;
-              dnum = std::max(std::round((snpc > actnum) * (snpc - actnum)), dnpc_min);
-              sewpc = erad / dnum;
-              ntot += static_cast<int>(dnum);
+              if (temp > emit_temp_th) {
+                snpc = npc;
+                dnum = std::max(std::round((snpc > actnum) * (snpc - actnum)), dnpc_min);
+                sewpc = erad / dnum;
+                ntot += static_cast<int>(dnum);
+              } else {
+                snpc = 0.0;
+                dnum = 0.0;
+                sewpc = 0.0;
+              }
             },
             Kokkos::Sum<int>(block_sum));
         Kokkos::single(Kokkos::PerTeam(member), [&]() { nparticles(b) = block_sum; });
