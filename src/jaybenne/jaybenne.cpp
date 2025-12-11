@@ -253,6 +253,10 @@ Initialize_impl(ParameterInput *pin, EOS &eos,
   Real tau_ddmc = pin->GetOrAddReal(block_name, "tau_ddmc", 5.0);
   pkg->AddParam<>("tau_ddmc", tau_ddmc);
 
+  // Experimental Fleck factor modification for grey Jiang Rossland-Planck transport
+  bool use_fj_factor = pin->GetOrAddBoolean(block_name, "use_fj_factor", false);
+  pkg->AddParam<>("use_fj_factor", use_fj_factor);
+
   // Sourcing strategy
   SourceStrategy source_strategy;
   std::string strategy = pin->GetOrAddString(block_name, "source_strategy", "uniform");
@@ -403,6 +407,9 @@ TaskStatus UpdateDerivedTransportFieldsImpl(MeshData<Real> *md, const Real dt) {
   PARTHENON_INSTRUMENT
   namespace fj = field::jaybenne;
   namespace fjh = field::jaybenne::host;
+  using singularity::photons::OpacityAveraging;
+  using singularity::photons::Planck;
+  using singularity::photons::Rosseland;
 
   auto pm = md->GetParentPointer();
   auto &resolved_pkgs = pm->resolved_packages;
@@ -412,10 +419,16 @@ TaskStatus UpdateDerivedTransportFieldsImpl(MeshData<Real> *md, const Real dt) {
   Scattering scattering;
   MeanOpacity mopacity;
   MeanScattering mscattering;
+
+  // check if hybrid Fleck-Jiang factor should be used
+  const bool use_fj_factor = jbn->template Param<bool>("use_fj_factor");
+
   if constexpr (FT == FrequencyType::gray) {
     mopacity = jbn->template Param<MeanOpacity>("mopacity_d");
     mscattering = jbn->template Param<MeanScattering>("mscattering_d");
   } else if constexpr (FT == FrequencyType::multigroup) {
+    PARTHENON_REQUIRE(!use_fj_factor,
+                      "Modified Fleck factor is not compatible with multigroup!");
     opacity = jbn->template Param<Opacity>("opacity_d");
     scattering = jbn->template Param<Scattering>("scattering_d");
   }
@@ -448,6 +461,20 @@ TaskStatus UpdateDerivedTransportFieldsImpl(MeshData<Real> *md, const Real dt) {
         }
         vmesh(b, fj::fleck_factor(), k, j, i) =
             1.0 / (1.0 + (4.0 * emis / (rho * cv * temp)) * dt);
+
+        // check if alternate time-linearization is possible in this cell
+        if constexpr (FT == FrequencyType::gray) {
+          if (use_fj_factor) {
+            const Real emisP = mopac.Emissivity(rho, temp, Planck);
+            Real fj = 1.0 / (1.0 + (4.0 * emisP / (rho * cv * temp)) * dt);
+            fj *= mopac.AbsorptionCoefficient(rho, temp, Planck) /
+                  mopac.AbsorptionCoefficient(rho, temp, Rosseland);
+            // use factor (fj) only if <= 1 (ensure non-zero effective scattering)
+            if (fj <= 1.0) {
+              vmesh(b, fj::fleck_factor(), k, j, i) = fj;
+            }
+          }
+        }
       });
 
   // if DDMC active, calculate symmetric (geom. invariant) portion of face probs
