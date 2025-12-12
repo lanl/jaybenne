@@ -94,35 +94,33 @@ TaskStatus SourcePhotons(T *md, const Real t_start, const Real dt) {
   Real npc = std::floor(static_cast<Real>(num_particles) /
                         (num_cells * md->GetMeshPointer()->nbtotal));
 
-  if constexpr (ST == SourceType::emission) {
-    // adjust particle number per cell up if threshold temperature is used
-    if (emit_temp_th > 0.0) {
-      // count the number of cells above the temperature threshold
-      Real ncell_abv_th = 0.0;
-      global_sum_reduce(
-          "count-emitting-cells", DevExecSpace(), nblocks, kb.s, kb.e, jb.s, jb.e, ib.s,
-          ib.e,
-          KOKKOS_LAMBDA(const int &b, const int &k, const int &j, const int &i,
-                        Real &totth) {
-            const Real &rho = vmesh(b, fjh::density(), k, j, i);
-            const Real &sie = vmesh(b, fjh::sie(), k, j, i);
-            const Real temp = eos.TemperatureFromDensityInternalEnergy(rho, sie);
-            totth += (temp > emit_temp_th ? 1.0 : 0.0);
-          },
-          ncell_abv_th);
+  // adjust particle number per cell up if threshold temperature is used
+  if (emit_temp_th > 0.0) {
+    // count the number of cells above the temperature threshold
+    Real ncell_abv_th = 0.0;
+    global_sum_reduce(
+        "SourcePhotons::count-emitting-cells", DevExecSpace(), nblocks, kb.s, kb.e, jb.s,
+        jb.e, ib.s, ib.e,
+        KOKKOS_LAMBDA(const int &b, const int &k, const int &j, const int &i,
+                      Real &totth) {
+          const Real &rho = vmesh(b, fjh::density(), k, j, i);
+          const Real &sie = vmesh(b, fjh::sie(), k, j, i);
+          const Real temp = eos.TemperatureFromDensityInternalEnergy(rho, sie);
+          totth += (temp > emit_temp_th ? 1.0 : 0.0);
+        },
+        ncell_abv_th);
 
-      PARTHENON_REQUIRE(ncell_abv_th > 0.0,
-                        "emission source but all cells below threshold temperature!");
+    PARTHENON_REQUIRE(ncell_abv_th > 0.0,
+                      "emission source but all cells below threshold temperature!");
 
-      // calculate scaling factor on number per cell
-      const Real npratio =
-          static_cast<Real>(num_cells * md->GetMeshPointer()->nbtotal) / ncell_abv_th;
-      PARTHENON_DEBUG_REQUIRE(npratio >= 1.0,
-                              "more emitting cells than total cells in problem!");
+    // calculate scaling factor on number per cell
+    const Real npratio =
+        static_cast<Real>(num_cells * md->GetMeshPointer()->nbtotal) / ncell_abv_th;
+    PARTHENON_DEBUG_REQUIRE(npratio >= 1.0,
+                            "more emitting cells than total cells in problem!");
 
-      // upgrade number of particles per (emitting) cell
-      npc = std::floor(npc * npratio);
-    }
+    // upgrade number of particles per (emitting) cell
+    npc = std::floor(npc * npratio);
   }
 
   ParArray1D<int> nparticles("# particles per block", nblocks);
