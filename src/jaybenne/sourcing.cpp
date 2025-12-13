@@ -34,6 +34,9 @@ TaskStatus SourcePhotons(T *md, const Real t_start, const Real dt) {
   namespace fj = field::jaybenne;
   namespace fjh = field::jaybenne::host;
   namespace ph = particle::photons;
+  using singularity::photons::OpacityAveraging;
+  using singularity::photons::Planck;
+  using singularity::photons::Rosseland;
 
   auto pm = md->GetParentPointer();
   auto &resolved_pkgs = pm->resolved_packages;
@@ -55,6 +58,10 @@ TaskStatus SourcePhotons(T *md, const Real t_start, const Real dt) {
   }
   auto &do_emission = jb_pkg->template Param<bool>("do_emission");
   auto &source_strategy = jb_pkg->template Param<SourceStrategy>("source_strategy");
+  const auto &use_planck = jb_pkg->template Param<bool>("use_planck");
+  const auto &use_rosseland = jb_pkg->template Param<bool>("use_rosseland");
+  // set opacity mode for grey opacity
+  const OpacityAveraging gmode = (use_planck && !use_rosseland) ? Planck : Rosseland;
   PARTHENON_REQUIRE(source_strategy != SourceStrategy::energy,
                     "Energy source strategy not implemented!");
   // TODO(BRR) replace with jaybenne param to disable emission
@@ -121,7 +128,7 @@ TaskStatus SourcePhotons(T *md, const Real t_start, const Real dt) {
               } else if constexpr (ST == SourceType::emission) {
                 Real emis = JaybenneNull<Real>();
                 if constexpr (FT == FrequencyType::gray) {
-                  emis = mopac.Emissivity(rho, temp);
+                  emis = mopac.Emissivity(rho, temp, gmode);
                 } else if constexpr (FT == FrequencyType::multigroup) {
                   // Construct emission CDF
                   const Real dlnu = (std::log(numaxd) - std::log(numind)) / n_nubinsd;
