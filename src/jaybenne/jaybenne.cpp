@@ -471,14 +471,15 @@ TaskStatus UpdateDerivedTransportFieldsImpl(MeshData<Real> *md, const Real dt) {
         // check if alternate time-linearization is possible in this cell
         if constexpr (FT == FrequencyType::gray) {
           if (use_planck && use_rosseland) {
-            const Real fj = vmesh(b, fj::fleck_factor(), k, j, i) *
-                            mopac.AbsorptionCoefficient(rho, temp, Planck) /
-                            mopac.AbsorptionCoefficient(rho, temp, Rosseland);
+            // calculate modified fleck factor using Planck and Rosseland
+            const Real ross = mopac.AbsorptionCoefficient(rho, temp, Rosseland);
+            const Real plnk = mopac.AbsorptionCoefficient(rho, temp, Planck);
+            const Real f = vmesh(b, fj::fleck_factor(), k, j, i);
+            const Real fj = ross > 0.0 ? f * plnk / ross : f;
+
             // use factor (fj) only if <= 1 (ensure non-zero effective scattering)
             // if fj > 0, the original Fleck factor still has used Planck (gmode)
-            if (fj <= 1.0) {
-              vmesh(b, fj::fleck_factor(), k, j, i) = fj;
-            }
+            vmesh(b, fj::fleck_factor(), k, j, i) = fj <= 1.0 ? fj : f;
           }
         }
       });
@@ -488,6 +489,9 @@ TaskStatus UpdateDerivedTransportFieldsImpl(MeshData<Real> *md, const Real dt) {
   if (use_ddmc) {
 
     PARTHENON_REQUIRE(FT == FrequencyType::gray, "DDMC only works in gray!");
+
+    // use Planck for all-Planck mode in leakage coefficients too
+    const OpacityAveraging gmode2 = (use_planck && !use_rosseland) ? Planck : Rosseland;
 
     // define extrapolation distance (Habetler & Matkowski 1975)
     constexpr Real lam_ext = 0.7104;
@@ -539,9 +543,9 @@ TaskStatus UpdateDerivedTransportFieldsImpl(MeshData<Real> *md, const Real dt) {
           [[maybe_unused]] auto scatter = scattering;
           if constexpr (FT == FrequencyType::gray) {
             ss_l = mscatter.RosselandMeanTotalScatteringCoefficient(rho_l, temp_l);
-            aa_l = mopac.RosselandMeanAbsorptionCoefficient(rho_l, temp_l);
+            aa_l = mopac.AbsorptionCoefficient(rho_l, temp_l, gmode2);
             ss_u = mscatter.RosselandMeanTotalScatteringCoefficient(rho_u, temp_u);
-            aa_u = mopac.RosselandMeanAbsorptionCoefficient(rho_u, temp_u);
+            aa_u = mopac.AbsorptionCoefficient(rho_u, temp_u, gmode2);
           } else if constexpr (FT == FrequencyType::multigroup) {
             // TODO: replace 3rd argument when this routine operates in multigroup
             ss_l = scatter.TotalScatteringCoefficient(rho_l, temp_l, 1.0);
@@ -605,9 +609,9 @@ TaskStatus UpdateDerivedTransportFieldsImpl(MeshData<Real> *md, const Real dt) {
             [[maybe_unused]] auto scatter = scattering;
             if constexpr (FT == FrequencyType::gray) {
               ss_l = mscatter.RosselandMeanTotalScatteringCoefficient(rho_l, temp_l);
-              aa_l = mopac.RosselandMeanAbsorptionCoefficient(rho_l, temp_l);
+              aa_l = mopac.AbsorptionCoefficient(rho_l, temp_l, gmode2);
               ss_u = mscatter.RosselandMeanTotalScatteringCoefficient(rho_u, temp_u);
-              aa_u = mopac.RosselandMeanAbsorptionCoefficient(rho_u, temp_u);
+              aa_u = mopac.AbsorptionCoefficient(rho_u, temp_u, gmode2);
             } else if constexpr (FT == FrequencyType::multigroup) {
               // TODO: replace 3rd argument when this routine operates in multigroup
               ss_l = scatter.TotalScatteringCoefficient(rho_l, temp_l, 1.0);
@@ -673,9 +677,9 @@ TaskStatus UpdateDerivedTransportFieldsImpl(MeshData<Real> *md, const Real dt) {
             [[maybe_unused]] auto scatter = scattering;
             if constexpr (FT == FrequencyType::gray) {
               ss_l = mscatter.RosselandMeanTotalScatteringCoefficient(rho_l, temp_l);
-              aa_l = mopac.RosselandMeanAbsorptionCoefficient(rho_l, temp_l);
+              aa_l = mopac.AbsorptionCoefficient(rho_l, temp_l, gmode2);
               ss_u = mscatter.RosselandMeanTotalScatteringCoefficient(rho_u, temp_u);
-              aa_u = mopac.RosselandMeanAbsorptionCoefficient(rho_u, temp_u);
+              aa_u = mopac.AbsorptionCoefficient(rho_u, temp_u, gmode2);
             } else if constexpr (FT == FrequencyType::multigroup) {
               // TODO: replace 3rd argument when this routine operates in multigroup
               ss_l = scatter.TotalScatteringCoefficient(rho_l, temp_l, 1.0);
