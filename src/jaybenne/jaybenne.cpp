@@ -458,10 +458,11 @@ TaskStatus UpdateDerivedTransportFieldsImpl(MeshData<Real> *md, const Real dt) {
         const Real temp = eos.TemperatureFromDensityInternalEnergy(rho, sie);
         const Real cv = eos.SpecificHeatFromDensityInternalEnergy(rho, sie);
         Real emis = JaybenneNull<Real>();
+        [[maybe_unused]] const auto gmoded = gmode;
         [[maybe_unused]] auto mopac = mopacity;
         [[maybe_unused]] auto opac = opacity;
         if constexpr (FT == FrequencyType::gray) {
-          emis = mopac.Emissivity(rho, temp, gmode);
+          emis = mopac.Emissivity(rho, temp, gmoded);
         } else if constexpr (FT == FrequencyType::multigroup) {
           emis = opac.Emissivity(rho, temp);
         }
@@ -537,15 +538,16 @@ TaskStatus UpdateDerivedTransportFieldsImpl(MeshData<Real> *md, const Real dt) {
           Real aa_l = JaybenneNull<Real>();
           Real ss_u = JaybenneNull<Real>();
           Real aa_u = JaybenneNull<Real>();
+          [[maybe_unused]] const auto gmode2d = gmode2;
           [[maybe_unused]] auto mopac = mopacity;
           [[maybe_unused]] auto mscatter = mscattering;
           [[maybe_unused]] auto opac = opacity;
           [[maybe_unused]] auto scatter = scattering;
           if constexpr (FT == FrequencyType::gray) {
             ss_l = mscatter.RosselandMeanTotalScatteringCoefficient(rho_l, temp_l);
-            aa_l = mopac.AbsorptionCoefficient(rho_l, temp_l, gmode2);
+            aa_l = mopac.AbsorptionCoefficient(rho_l, temp_l, gmode2d);
             ss_u = mscatter.RosselandMeanTotalScatteringCoefficient(rho_u, temp_u);
-            aa_u = mopac.AbsorptionCoefficient(rho_u, temp_u, gmode2);
+            aa_u = mopac.AbsorptionCoefficient(rho_u, temp_u, gmode2d);
           } else if constexpr (FT == FrequencyType::multigroup) {
             // TODO: replace 3rd argument when this routine operates in multigroup
             ss_l = scatter.TotalScatteringCoefficient(rho_l, temp_l, 1.0);
@@ -603,15 +605,16 @@ TaskStatus UpdateDerivedTransportFieldsImpl(MeshData<Real> *md, const Real dt) {
             Real aa_l = JaybenneNull<Real>();
             Real ss_u = JaybenneNull<Real>();
             Real aa_u = JaybenneNull<Real>();
+            [[maybe_unused]] const auto gmode2d = gmode2;
             [[maybe_unused]] auto mopac = mopacity;
             [[maybe_unused]] auto mscatter = mscattering;
             [[maybe_unused]] auto opac = opacity;
             [[maybe_unused]] auto scatter = scattering;
             if constexpr (FT == FrequencyType::gray) {
               ss_l = mscatter.RosselandMeanTotalScatteringCoefficient(rho_l, temp_l);
-              aa_l = mopac.AbsorptionCoefficient(rho_l, temp_l, gmode2);
+              aa_l = mopac.AbsorptionCoefficient(rho_l, temp_l, gmode2d);
               ss_u = mscatter.RosselandMeanTotalScatteringCoefficient(rho_u, temp_u);
-              aa_u = mopac.AbsorptionCoefficient(rho_u, temp_u, gmode2);
+              aa_u = mopac.AbsorptionCoefficient(rho_u, temp_u, gmode2d);
             } else if constexpr (FT == FrequencyType::multigroup) {
               // TODO: replace 3rd argument when this routine operates in multigroup
               ss_l = scatter.TotalScatteringCoefficient(rho_l, temp_l, 1.0);
@@ -671,15 +674,16 @@ TaskStatus UpdateDerivedTransportFieldsImpl(MeshData<Real> *md, const Real dt) {
             Real aa_l = JaybenneNull<Real>();
             Real ss_u = JaybenneNull<Real>();
             Real aa_u = JaybenneNull<Real>();
+            [[maybe_unused]] const auto gmode2d = gmode2;
             [[maybe_unused]] auto mopac = mopacity;
             [[maybe_unused]] auto mscatter = mscattering;
             [[maybe_unused]] auto opac = opacity;
             [[maybe_unused]] auto scatter = scattering;
             if constexpr (FT == FrequencyType::gray) {
               ss_l = mscatter.RosselandMeanTotalScatteringCoefficient(rho_l, temp_l);
-              aa_l = mopac.AbsorptionCoefficient(rho_l, temp_l, gmode2);
+              aa_l = mopac.AbsorptionCoefficient(rho_l, temp_l, gmode2d);
               ss_u = mscatter.RosselandMeanTotalScatteringCoefficient(rho_u, temp_u);
-              aa_u = mopac.AbsorptionCoefficient(rho_u, temp_u, gmode2);
+              aa_u = mopac.AbsorptionCoefficient(rho_u, temp_u, gmode2d);
             } else if constexpr (FT == FrequencyType::multigroup) {
               // TODO: replace 3rd argument when this routine operates in multigroup
               ss_l = scatter.TotalScatteringCoefficient(rho_l, temp_l, 1.0);
@@ -734,7 +738,6 @@ TaskStatus UpdateDerivedTransportFields(MeshData<Real> *md, const Real dt) {
 TaskStatus DefragParticles(MeshData<Real> *md) {
   PARTHENON_INSTRUMENT
   auto pm = md->GetParentPointer();
-  auto &resolved_pkgs = pm->resolved_packages;
   auto &jbn = pm->packages.Get("jaybenne");
   auto &min_swarm_occupancy = jbn->template Param<Real>("min_swarm_occupancy");
   const int nblocks = md->NumBlocks();

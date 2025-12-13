@@ -114,6 +114,7 @@ TaskStatus SourcePhotons(T *md, const Real t_start, const Real dt) {
               const Real &rho = vmesh(b, fjh::density(), k, j, i);
               const Real &sie = vmesh(b, fjh::sie(), k, j, i);
               const Real temp = eos.TemperatureFromDensityInternalEnergy(rho, sie);
+              [[maybe_unused]] const auto gmoded = gmode;
               [[maybe_unused]] const Real &sbd = sb;
               [[maybe_unused]] const Real &vvd = vv;
               [[maybe_unused]] const Real &dtd = dt;
