@@ -108,7 +108,7 @@ TaskStatus SourcePhotons(T *md, const Real t_start, const Real dt) {
           const Real temp = eos.TemperatureFromDensityInternalEnergy(rho, sie);
           totth += (temp > emit_temp_th ? 1.0 : 0.0);
         },
-        ncell_abv_th);
+        ncell_abv_th, true);
 
     PARTHENON_REQUIRE(ncell_abv_th > 0.0,
                       "emission source but all cells below threshold temperature!");
