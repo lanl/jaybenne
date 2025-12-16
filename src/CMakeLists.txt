@@ -1,5 +1,5 @@
 # ========================================================================================
-# (C) (or copyright) 2023-2024. Triad National Security, LLC. All rights
+# (C) (or copyright) 2023-2025. Triad National Security, LLC. All rights
 # reserved.
 #
 # This program was produced under U.S. Government contract 89233218CNA000001 for
@@ -50,6 +50,12 @@ if(JAYBENNE_STANDALONE_MODE)
   set(JAYBENNE_HOST_UPDATE_ENERGY_VARIABLE
       "field::material::internal_energy"
       CACHE STRING "Variable type name for host internal energy density" FORCE)
+  set(JAYBENNE_HOST_ABSORPTION_OPACITY_VARIABLE
+      "field::material::absorption_opacity"
+      CACHE STRING "Variable type name for host absorption opacity" FORCE)
+  set(JAYBENNE_HOST_SCATTERING_OPACITY_VARIABLE
+      "field::material::scattering_opacity"
+      CACHE STRING "Variable type name for host scattering opacity" FORCE)
 
   # Set locations of singularity include files for jaybenne library to use
   # during its configuration step
@@ -64,8 +70,8 @@ if(JAYBENNE_STANDALONE_MODE)
       $<BUILD_INTERFACE:${CMAKE_BINARY_DIR}/generated>)
 
   # singularity eos
-  message("Configuring singularity-eos for mcblock")
-  add_subdirectory(${CMAKE_SOURCE_DIR}/external/singularity-eos ${CMAKE_BINARY_DIR}/singularity-eos)
+  # message("Configuring singularity-eos for mcblock")
+  # add_subdirectory(${CMAKE_SOURCE_DIR}/external/singularity-eos ${CMAKE_BINARY_DIR}/singularity-eos)
 
 endif()
 

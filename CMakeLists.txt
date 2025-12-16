@@ -1,5 +1,5 @@
 #=========================================================================================
-# (C) (or copyright) 2023-2024. Triad National Security, LLC. All rights reserved.
+# (C) (or copyright) 2023-2025. Triad National Security, LLC. All rights reserved.
 # This program was produced under U.S. Government contract 89233218CNA000001 for Los
 # Alamos National Laboratory (LANL), which is operated by Triad National Security, LLC for
 # the U.S. Department of Energy/National Nuclear Security Administration. All rights in
@@ -22,6 +22,7 @@ set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_EXPORT_COMPILE_COMMANDS On)
 
 option(JAYBENNE_ENABLE_CUDA "Enable CUDA for Jaybenne and all dependencies" OFF)
+option(JAYBENNE_ENABLE_HIP "Enable HIP for Jaybenne and all dependencies" OFF)
 option(JAYBENNE_ENABLE_HDF5 "Enable HDF5 for Jaybenne and all dependencies" ON)
 option(JAYBENNE_ENABLE_MPI "Enable MPI for Jaybenne and all dependencies" ON)
 option(JAYBENNE_ENABLE_OPENMP "Enable OpenbMP for Jaybenne and all dependencies" OFF)
@@ -71,6 +72,14 @@ if(JAYBENNE_ENABLE_CUDA)
   set(Kokkos_ENABLE_CUDA_RELOCATABLE_DEVICE_CODE ON CACHE BOOL "" FORCE)
 endif()
 
+# HIP
+if(JAYBENNE_ENABLE_HIP)
+  set(SINGULARITY_USE_HIP ON CACHE BOOL "" FORCE)
+  set(Kokkos_ENABLE_HIP ON CACHE BOOL "" FORCE)
+  set(Kokkos_ENABLE_SERIAL ON CACHE BOOL "" FORCE)
+  set(Kokkos_ENABLE_HIP_RELOCATABLE_DEVICE_CODE ON CACHE BOOL "" FORCE)
+endif()
+
 # HDF5
 if(JAYBENNE_ENABLE_HDF5)
   set(HDF5_PREFER_PARALLEL ${JAYBENNE_ENABLE_MPI})
@@ -89,9 +98,12 @@ if(JAYBENNE_ENABLE_HDF5)
       "-DJAYBENNE_ENABLE_HDF5=OFF")
   endif()
   set(SINGULARITY_USE_HDF5 ON CACHE BOOL "" FORCE)
+  set(SINGULARITY_USE_SPINER ON CACHE BOOL "" FORCE)
+  set(SINGULARITY_USE_SPINER_WITH_HDF5 ON CACHE BOOL "" FORCE)
   set(PARTHENON_DISABLE_HDF5 OFF CACHE BOOL "" FORCE)
 else()
   set(SINGULARITY_USE_HDF5 OFF CACHE BOOL "" FORCE)
+  set(SINGULARITY_USE_SPINER ON CACHE BOOL "" FORCE)
   set(PARTHENON_DISABLE_HDF5 ON CACHE BOOL "" FORCE)
 endif()
 
@@ -143,8 +155,10 @@ execute_process(COMMAND patch -N -s -V never
 # using both singularity-eos and singularity-opac together
 
 ## singularity eos
-# message("Configuring singularity-eos")
-# add_subdirectory(external/singularity-eos singularity-eos)
+if (NOT TARGET singularity-eos::singularity-eos)
+  message("Configuring singularity-eos")
+  add_subdirectory(external/singularity-eos singularity-eos)
+endif()
 
 ## singularity opac
 # message("Configuring singularity-opac")

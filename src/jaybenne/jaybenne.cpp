@@ -17,6 +17,7 @@
 // Jaybenne includes
 #include "jaybenne.hpp"
 #include "jaybenne_utils.hpp"
+#include <utils/robust.hpp>
 
 namespace jaybenne {
 
@@ -24,6 +25,7 @@ using TQ = TaskQualifier;
 
 // TODO(BRR) Move these methods to Parthenon
 TaskStatus MeshResetCommunication(MeshData<Real> *md) {
+  PARTHENON_INSTRUMENT
   const int nblocks = md->NumBlocks();
   for (int n = 0; n < nblocks; n++) {
     auto &mbd = md->GetBlockData(n);
@@ -35,6 +37,7 @@ TaskStatus MeshResetCommunication(MeshData<Real> *md) {
 }
 
 TaskStatus MeshSend(MeshData<Real> *md) {
+  PARTHENON_INSTRUMENT
   const int nblocks = md->NumBlocks();
   for (int n = 0; n < nblocks; n++) {
     auto &mbd = md->GetBlockData(n);
@@ -46,6 +49,7 @@ TaskStatus MeshSend(MeshData<Real> *md) {
 }
 
 TaskStatus MeshReceive(MeshData<Real> *md) {
+  PARTHENON_INSTRUMENT
   TaskStatus status = TaskStatus::complete;
   const int nblocks = md->NumBlocks();
   for (int n = 0; n < nblocks; n++) {
@@ -65,8 +69,16 @@ TaskStatus MeshReceive(MeshData<Real> *md) {
 //! \brief Construct the collection of tasks that contribute to a complete radiation cycle
 //!        from t to t + dt, including setting up derived quantities, sourcing particles,
 //!        transporting particles, and communicating particles.
-TaskCollection RadiationStep(Mesh *pmesh, const Real t_start, const Real dt) {
+TaskCollection RadiationStep(Mesh *pmesh, const SimTime &tm, const Real dt) {
+  PARTHENON_INSTRUMENT
   namespace fj = field::jaybenne;
+
+  // short-cuts
+  const Real &t_start = tm.time;
+  const int &ncycle = tm.ncycle;
+  const int &ncycle_out = tm.ncycle_out;
+  PARTHENON_REQUIRE(fuzzy_equal(tm.dt, dt, dt, parthenon::robust::EPS()),
+                    "Integrator dt (RadiationStep arg) must equal SimTime dt");
 
   auto &jb_pkg = pmesh->packages.Get("jaybenne");
   const auto &max_transport_iterations =
@@ -98,6 +110,7 @@ TaskCollection RadiationStep(Mesh *pmesh, const Real t_start, const Real dt) {
   auto &reg = tc.AddRegion(num_partitions);
   for (int i = 0; i < num_partitions; i++) {
     auto &tl = reg[i];
+
     // Get base register for particles and DDMC fields register (if applicable)
     auto &base = pmesh->mesh_data.GetOrAdd("base", i);
     auto &md_ddmc = pmesh->mesh_data.GetOrAdd("ddmc_reg", i);
@@ -163,7 +176,11 @@ TaskCollection RadiationStep(Mesh *pmesh, const Real t_start, const Real dt) {
     auto update_fluid = tl.AddTask(eval_rad, jaybenne::UpdateFluid, base.get());
 
     // Control particle population
-    auto control_pop = tl.AddTask(update_fluid, jaybenne::ControlPopulation, base.get());
+    auto control_pop = tl.AddTask(update_fluid, jaybenne::ControlPopulation, base.get(),
+                                  ncycle, ncycle_out);
+
+    // TODO: Defrag particles? Verify parth swarm defrag mechanics before uncommenting
+    // auto defrag_pop = tl.AddTask(control_pop, jaybenne::DefragParticles, base.get());
   }
 
   auto &timing_region1 = tc.AddRegion(1);
@@ -188,9 +205,18 @@ Initialize_impl(ParameterInput *pin, EOS &eos,
                 singularity::RuntimePhysicalConstants units, std::string block_name) {
   auto pkg = std::make_shared<StateDescriptor>("jaybenne");
 
+  // Diagnostics verbosity
+  int diagnostic_level = pin->GetOrAddInteger(block_name, "diagnostic_level", 0);
+  pkg->AddParam<>("diagnostic_level", diagnostic_level);
+  PARTHENON_REQUIRE(diagnostic_level >= 0 && diagnostic_level <= 1,
+                    "diagnostic_level is currently restricted to 0 or 1");
+
   // Total number of particles
   int num_particles = pin->GetInteger(block_name, "num_particles");
   pkg->AddParam<>("num_particles", num_particles);
+  Real dnpc_min = pin->GetOrAddReal(block_name, "dnpc_min", 20.0);
+  PARTHENON_REQUIRE(dnpc_min >= 1.0, "dnpc_min must be at least 1");
+  pkg->AddParam<>("dnpc_min", dnpc_min);
   Real dt = pin->GetOrAddReal(block_name, "dt", std::numeric_limits<Real>::max());
   pkg->AddParam<>("dt", dt);
 
@@ -251,7 +277,7 @@ Initialize_impl(ParameterInput *pin, EOS &eos,
   pkg->AddParam<>("eos_d", eos.GetOnDevice());
 
   // Swarm and swarm variables
-  Metadata swarm_metadata({Metadata::Provides, Metadata::None});
+  Metadata swarm_metadata({Metadata::Provides, Metadata::None, Metadata::Restart});
   pkg->AddSwarm(photons_swarm_name, swarm_metadata);
   Metadata mreal({Metadata::Real});
   pkg->AddSwarmValue(particle::photons::time::name(), photons_swarm_name, mreal);
@@ -267,12 +293,15 @@ Initialize_impl(ParameterInput *pin, EOS &eos,
   pkg->AddField(field::jaybenne::energy_tally::name(), m);
   pkg->AddField(field::jaybenne::fleck_factor::name(), m);
 
-  // Sourcing fields
+  // Sourcing and tallying fields (recalculated each time step)
   Metadata m_onecopy({Metadata::Cell, Metadata::OneCopy});
   pkg->AddField(field::jaybenne::source_ew_per_cell::name(), m_onecopy);
-  pkg->AddField(field::jaybenne::source_num_per_cell::name(), m_onecopy);
   pkg->AddField(field::jaybenne::delta_num_per_cell::name(), m_onecopy);
   pkg->AddField(field::jaybenne::energy_delta::name(), m_onecopy);
+
+  // Sourcing fields needed on restart
+  Metadata m_onecopy_rst({Metadata::Cell, Metadata::OneCopy, Metadata::Restart});
+  pkg->AddField(field::jaybenne::source_num_per_cell::name(), m_onecopy_rst);
 
   // Population control fields
   pkg->AddField(field::jaybenne::active_ew_per_cell::name(), m_onecopy);
@@ -355,6 +384,7 @@ std::shared_ptr<StateDescriptor> Initialize(ParameterInput *pin, Opacity &opacit
 //! \fn  Real Jaybenne::EstimateTimestepMesh
 //! \brief Compute radiation timestep
 Real EstimateTimestepMesh(MeshData<Real> *md) {
+  PARTHENON_INSTRUMENT
   // TODO(BRR) This should be provided by mcblock or other downstream codes... jaybenne
   // should have no timestep constraint.
   return md->GetParentPointer()->packages.Get("jaybenne")->template Param<Real>("dt");
@@ -370,6 +400,7 @@ Real EstimateTimestepMesh(MeshData<Real> *md) {
 //!               then f = 1 / (1 + 4 * J * dt / (rho * cv * T))
 template <FrequencyType FT>
 TaskStatus UpdateDerivedTransportFieldsImpl(MeshData<Real> *md, const Real dt) {
+  PARTHENON_INSTRUMENT
   namespace fj = field::jaybenne;
   namespace fjh = field::jaybenne::host;
 
@@ -645,6 +676,7 @@ TaskStatus UpdateDerivedTransportFieldsImpl(MeshData<Real> *md, const Real dt) {
 //!         NOTE: if J = opacP * c * aR * T^4,
 //!               then f = 1 / (1 + 4 * J * dt / (rho * cv * T))
 TaskStatus UpdateDerivedTransportFields(MeshData<Real> *md, const Real dt) {
+  PARTHENON_INSTRUMENT
   auto pm = md->GetParentPointer();
   auto &jbn = pm->packages.Get("jaybenne");
   auto &frequency_type = jbn->template Param<FrequencyType>("frequency_type");
@@ -662,13 +694,20 @@ TaskStatus UpdateDerivedTransportFields(MeshData<Real> *md, const Real dt) {
 //! \brief  NOTE(PDM): currently unused???
 //! TODO(BRR) We should re-enable this but add a runtime parameter that sets the
 //! fractional fragmentation of the memory pool above which we defragment.
-TaskStatus DefragParticles(MeshBlock *pmb) {
-  auto &jbn = pmb->packages.Get("jaybenne");
+TaskStatus DefragParticles(MeshData<Real> *md) {
+  PARTHENON_INSTRUMENT
+  auto pm = md->GetParentPointer();
+  auto &resolved_pkgs = pm->resolved_packages;
+  auto &jbn = pm->packages.Get("jaybenne");
   auto &min_swarm_occupancy = jbn->template Param<Real>("min_swarm_occupancy");
-  auto &swarm = pmb->meshblock_data.Get()->GetSwarmData()->Get(photons_swarm_name);
-  if (swarm->GetNumActive() > 0) {
-    if (swarm->GetPackingEfficiency() < min_swarm_occupancy) {
-      swarm->Defrag();
+  const int nblocks = md->NumBlocks();
+
+  for (int b = 0; b <= nblocks - 1; ++b) {
+    auto &swarm = md->GetSwarmData(b)->Get(photons_swarm_name);
+    if (swarm->GetNumActive() > 0) {
+      if (swarm->GetPackingEfficiency() < min_swarm_occupancy) {
+        swarm->Defrag();
+      }
     }
   }
   return TaskStatus::complete;
@@ -679,6 +718,7 @@ TaskStatus DefragParticles(MeshBlock *pmb) {
 //! \brief
 template <typename T>
 TaskStatus EvaluateRadiationEnergy(T *md) {
+  PARTHENON_INSTRUMENT
   namespace fj = field::jaybenne;
   namespace ph = particle::photons;
 
@@ -734,6 +774,7 @@ TaskStatus EvaluateRadiationEnergy(T *md) {
 //! \brief Initialize radiation based on material temperature and either thermal or
 //!        zero initial radiation.
 void InitializeRadiation(MeshBlockData<Real> *mbd, const bool is_thermal) {
+  PARTHENON_INSTRUMENT
   auto &jb_pkg = mbd->GetBlockPointer()->packages.Get("jaybenne");
   const auto &fd = jb_pkg->template Param<FrequencyType>("frequency_type");
 
@@ -755,6 +796,7 @@ void InitializeRadiation(MeshBlockData<Real> *mbd, const bool is_thermal) {
 //! \fn  TaskStatus UpdateFluid
 //! \brief
 TaskStatus UpdateFluid(MeshData<Real> *md) {
+  PARTHENON_INSTRUMENT
   namespace fj = field::jaybenne;
   namespace fjh = field::jaybenne::host;
 

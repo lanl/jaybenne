@@ -27,6 +27,7 @@ namespace jaybenne {
 //! \brief
 template <FrequencyType FT>
 TaskStatus TransportPhotons(MeshData<Real> *md, const Real t_start, const Real dt) {
+  PARTHENON_INSTRUMENT
   namespace fj = field::jaybenne;
   namespace fjh = field::jaybenne::host;
   namespace sp = swarm_position;
@@ -39,15 +40,10 @@ TaskStatus TransportPhotons(MeshData<Real> *md, const Real t_start, const Real d
   auto &eos = jb_pkg->template Param<EOS>("eos_d");
   Opacity opacity;
   Scattering scattering;
-  MeanOpacity mopacity;
-  MeanScattering mscattering;
   int n_nubins = JaybenneNull<int>();
   Real numin = JaybenneNull<Real>();
   Real numax = JaybenneNull<Real>();
-  if constexpr (FT == FrequencyType::gray) {
-    mopacity = jb_pkg->template Param<MeanOpacity>("mopacity_d");
-    mscattering = jb_pkg->template Param<MeanScattering>("mscattering_d");
-  } else if constexpr (FT == FrequencyType::multigroup) {
+  if constexpr (FT == FrequencyType::multigroup) {
     opacity = jb_pkg->template Param<Opacity>("opacity_d");
     scattering = jb_pkg->template Param<Scattering>("scattering_d");
     n_nubins = jb_pkg->template Param<int>("n_nubins");
@@ -60,7 +56,8 @@ TaskStatus TransportPhotons(MeshData<Real> *md, const Real t_start, const Real d
   // Create SparsePack
   static auto desc =
       MakePackDescriptor<fjh::density, fjh::sie, fj::emission_cdf, fj::fleck_factor,
-                         fj::energy_delta>(resolved_pkgs.get());
+                         fj::energy_delta, fjh::absorption_opacity,
+                         fjh::scattering_opacity>(resolved_pkgs.get());
   auto vmesh = desc.GetPack(md);
 
   // Create SwarmPacks
@@ -144,21 +141,20 @@ TaskStatus TransportPhotons(MeshData<Real> *md, const Real t_start, const Real d
             const Real zu = coords.template Xc<parthenon::X3DIR>(kp) + 0.5 * dx_k;
 
             // Extract physical quantities
-            const Real &rho = vmesh(b, fjh::density(), kp, jp, ip);
-            const Real &sie = vmesh(b, fjh::sie(), kp, jp, ip);
-            const Real temp = eos.TemperatureFromDensityInternalEnergy(rho, sie);
             const Real &ff = vmesh(b, fj::fleck_factor(), kp, jp, ip);
             Real ss = JaybenneNull<Real>();
             Real aa = JaybenneNull<Real>();
-            [[maybe_unused]] auto mopac = mopacity;
-            [[maybe_unused]] auto mscatter = mscattering;
             [[maybe_unused]] auto opac = opacity;
             [[maybe_unused]] auto scatter = scattering;
+            [[maybe_unused]] auto eost = eos;
             if constexpr (FT == FrequencyType::gray) {
               // TODO: use TotalScatteringCoefficient(rho, temp), when available
-              ss = mscatter.RosselandMeanTotalScatteringCoefficient(rho, temp);
-              aa = mopac.AbsorptionCoefficient(rho, temp);
+              ss = vmesh(b, fjh::scattering_opacity(), kp, jp, ip);
+              aa = vmesh(b, fjh::absorption_opacity(), kp, jp, ip);
             } else if constexpr (FT == FrequencyType::multigroup) {
+              const Real &rho = vmesh(b, fjh::density(), kp, jp, ip);
+              const Real &sie = vmesh(b, fjh::sie(), kp, jp, ip);
+              const Real temp = eost.TemperatureFromDensityInternalEnergy(rho, sie);
               ss = scatter.TotalScatteringCoefficient(rho, temp, ee);
               aa = opac.AbsorptionCoefficient(rho, temp, ee);
             }
@@ -250,6 +246,7 @@ TaskStatus TransportPhotons(MeshData<Real> *md, const Real t_start, const Real d
 //! \brief Checks all particles on this mesh to see if they have reached the end
 //!        of the timestep. If not, further iterations of transport are indicated.
 TaskStatus CheckCompletion(MeshData<Real> *md, const Real t_end) {
+  PARTHENON_INSTRUMENT
   namespace ph = particle::photons;
 
   // Create SwarmPacks

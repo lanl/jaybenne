@@ -79,6 +79,7 @@ void SampleFace3D(const int i1_l, const int i2_l, const Real dx1, const Real dx2
 
 // sample face for particles coming from a coarser block DDMC cell
 TaskStatus SampleDDMCBlockFace(MeshData<Real> *md) {
+  PARTHENON_INSTRUMENT
   namespace fj = field::jaybenne;
   namespace fjh = field::jaybenne::host;
   namespace sp = swarm_position;
@@ -150,16 +151,16 @@ TaskStatus SampleDDMCBlockFace(MeshData<Real> *md) {
               const Real y_j = coords.Xc<parthenon::X2DIR>(jp) - 0.5 * dy_j;
 
               // check particle proximity to block faces
-              // if DDMC moves particle eps_ddmc_offset coarse cell dx then
-              // 2*eps_ddmc_offset current block cell dx
+              // if DDMC moves particle eps_ddmc_offset() coarse cell dx then
+              // 2*eps_ddmc_offset() current block cell dx
               const bool at_block_x_min = fuzzy_equal(
-                  x, swarm_d.x_min_ + 2.0 * eps_ddmc_offset * dx_i, dx_i, eps);
+                  x, swarm_d.x_min_ + 2.0 * eps_ddmc_offset() * dx_i, dx_i, eps);
               const bool at_block_x_max = fuzzy_equal(
-                  x, swarm_d.x_max_ - 2.0 * eps_ddmc_offset * dx_i, dx_i, eps);
+                  x, swarm_d.x_max_ - 2.0 * eps_ddmc_offset() * dx_i, dx_i, eps);
               const bool at_block_y_min = fuzzy_equal(
-                  y, swarm_d.y_min_ + 2.0 * eps_ddmc_offset * dy_j, dy_j, eps);
+                  y, swarm_d.y_min_ + 2.0 * eps_ddmc_offset() * dy_j, dy_j, eps);
               const bool at_block_y_max = fuzzy_equal(
-                  y, swarm_d.y_max_ - 2.0 * eps_ddmc_offset * dy_j, dy_j, eps);
+                  y, swarm_d.y_max_ - 2.0 * eps_ddmc_offset() * dy_j, dy_j, eps);
 
               if (at_block_x_min || at_block_x_max) {
                 // check at high or low x block face
@@ -269,20 +270,20 @@ TaskStatus SampleDDMCBlockFace(MeshData<Real> *md) {
               const Real z_k = coords.Xc<parthenon::X3DIR>(kp) - 0.5 * dz_k;
 
               // check particle proximity to block faces
-              // if DDMC moves particle eps_ddmc_offset coarse cell dx then
-              // 2*eps_ddmc_offset current block cell dx
+              // if DDMC moves particle eps_ddmc_offset() coarse cell dx then
+              // 2*eps_ddmc_offset() current block cell dx
               const bool at_block_x_min = fuzzy_equal(
-                  x, swarm_d.x_min_ + 2.0 * eps_ddmc_offset * dx_i, dx_i, eps);
+                  x, swarm_d.x_min_ + 2.0 * eps_ddmc_offset() * dx_i, dx_i, eps);
               const bool at_block_x_max = fuzzy_equal(
-                  x, swarm_d.x_max_ - 2.0 * eps_ddmc_offset * dx_i, dx_i, eps);
+                  x, swarm_d.x_max_ - 2.0 * eps_ddmc_offset() * dx_i, dx_i, eps);
               const bool at_block_y_min = fuzzy_equal(
-                  y, swarm_d.y_min_ + 2.0 * eps_ddmc_offset * dy_j, dy_j, eps);
+                  y, swarm_d.y_min_ + 2.0 * eps_ddmc_offset() * dy_j, dy_j, eps);
               const bool at_block_y_max = fuzzy_equal(
-                  y, swarm_d.y_max_ - 2.0 * eps_ddmc_offset * dy_j, dy_j, eps);
+                  y, swarm_d.y_max_ - 2.0 * eps_ddmc_offset() * dy_j, dy_j, eps);
               const bool at_block_z_min = fuzzy_equal(
-                  z, swarm_d.z_min_ + 2.0 * eps_ddmc_offset * dz_k, dz_k, eps);
+                  z, swarm_d.z_min_ + 2.0 * eps_ddmc_offset() * dz_k, dz_k, eps);
               const bool at_block_z_max = fuzzy_equal(
-                  z, swarm_d.z_max_ - 2.0 * eps_ddmc_offset * dz_k, dz_k, eps);
+                  z, swarm_d.z_max_ - 2.0 * eps_ddmc_offset() * dz_k, dz_k, eps);
 
               if (at_block_x_min || at_block_x_max) {
                 // check at high or low x block face

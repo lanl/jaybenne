@@ -33,6 +33,8 @@ namespace material {
 MCBLOCK_FIELD_VARIABLE(field.material, density);
 MCBLOCK_FIELD_VARIABLE(field.material, sie);
 MCBLOCK_FIELD_VARIABLE(field.material, internal_energy);
+MCBLOCK_FIELD_VARIABLE(field.material, absorption_opacity);
+MCBLOCK_FIELD_VARIABLE(field.material, scattering_opacity);
 } // namespace material
 } // namespace field
 

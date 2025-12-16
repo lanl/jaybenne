@@ -74,6 +74,7 @@ transport_model = zone_size
 tracking_algo = history # event
 source_strategy = uniform
 seed = 349857
+diagnostic_level = 1
 
 <mcblock>
 frequency_type = gray
@@ -94,3 +95,7 @@ variables = field.material.density,         &
             field.jaybenne.energy_tally
 swarms = photons
 swarm_variables = swarm.x, swarm.y
+
+<parthenon/output1>
+file_type = rst
+dn = 5

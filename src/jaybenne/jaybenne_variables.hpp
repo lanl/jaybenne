@@ -47,6 +47,8 @@ namespace host {
 typedef HOST_DENSITY density;
 typedef HOST_SPECIFIC_INTERNAL_ENERGY sie;
 typedef HOST_UPDATE_ENERGY update_energy;
+typedef HOST_ABSORPTION_OPACITY absorption_opacity;
+typedef HOST_SCATTERING_OPACITY scattering_opacity;
 } // namespace host
 } // namespace jaybenne
 } // namespace field

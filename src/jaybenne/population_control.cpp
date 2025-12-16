@@ -13,6 +13,7 @@
 
 // Jaybenne includes
 #include "jaybenne.hpp"
+#include "jaybenne_utils.hpp"
 
 namespace jaybenne {
 
@@ -24,7 +25,8 @@ namespace jaybenne {
 //! particles. The expectation value is then the number of source particles: N_rm ~ P_rm *
 //! N_act = (1 - N_src / N_act) * N_act = N_act - N_src The remaining particles then each
 //! have their energy weight renormalized.
-TaskStatus ControlPopulation(MeshData<Real> *md) {
+TaskStatus ControlPopulation(MeshData<Real> *md, const int ncycle, const int ncycle_out) {
+  PARTHENON_INSTRUMENT
   namespace fj = field::jaybenne;
   namespace ph = particle::photons;
 
@@ -32,6 +34,7 @@ TaskStatus ControlPopulation(MeshData<Real> *md) {
   auto &resolved_pkgs = pm->resolved_packages;
   auto &jb_pkg = pm->packages.Get("jaybenne");
   auto &rng_pool = jb_pkg->template Param<RngPool>("rng_pool");
+  const auto &diagnostic_level = jb_pkg->template Param<int>("diagnostic_level");
 
   // Create SparsePack
   static auto desc =
@@ -84,6 +87,25 @@ TaskStatus ControlPopulation(MeshData<Real> *md) {
           Kokkos::atomic_add(&actnum, 1.0);
         }
       });
+
+  //--------------------------------------------------------------------------------------
+  // print total number of active particles at a certain diagnostic level
+  if (diagnostic_level >= 1 && ncycle % ncycle_out == 0) {
+    Real num_tot_active_old = 0.0;
+    global_sum_reduce(
+        "ControlPopulation::report-tot-active-1", DevExecSpace(), nblocks, kb.s, kb.e,
+        jb.s, jb.e, ib.s, ib.e,
+        KOKKOS_LAMBDA(const int &b, const int &k, const int &j, const int &i,
+                      Real &tota) {
+          tota += vmesh(b, fj::active_num_per_cell(), k, j, i);
+        },
+        num_tot_active_old);
+
+    // print total on rank 0
+    if (Globals::my_rank == 0) {
+      std::cout << "Post-IMC # active particles: " << num_tot_active_old << std::endl;
+    }
+  }
 
   //--------------------------------------------------------------------------------------
   // sample probability to mark particle for removal
@@ -151,6 +173,25 @@ TaskStatus ControlPopulation(MeshData<Real> *md) {
           Kokkos::atomic_add(&actnum, 1.0);
         }
       });
+
+  //--------------------------------------------------------------------------------------
+  // print total number of active particles at a certain diagnostic level
+  if (diagnostic_level >= 1 && ncycle % ncycle_out == 0) {
+    Real num_tot_active = 0.0;
+    global_sum_reduce(
+        "ControlPopulation::report-tot-active-2", DevExecSpace(), nblocks, kb.s, kb.e,
+        jb.s, jb.e, ib.s, ib.e,
+        KOKKOS_LAMBDA(const int &b, const int &k, const int &j, const int &i,
+                      Real &tota) {
+          tota += vmesh(b, fj::active_num_per_cell(), k, j, i);
+        },
+        num_tot_active);
+
+    // print total on rank 0
+    if (Globals::my_rank == 0) {
+      std::cout << "Post-PopCon # active particles: " << num_tot_active << std::endl;
+    }
+  }
 
   //--------------------------------------------------------------------------------------
   // renormalize surviving particle energy weights, to conserve energy

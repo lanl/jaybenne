@@ -27,6 +27,7 @@ namespace jaybenne {
 //! \brief
 template <FrequencyType FT>
 TaskStatus TransportPhotons_DDMC(MeshData<Real> *md, const Real t_start, const Real dt) {
+  PARTHENON_INSTRUMENT
   namespace fj = field::jaybenne;
   namespace fjh = field::jaybenne::host;
   namespace sp = swarm_position;
@@ -38,17 +39,16 @@ TaskStatus TransportPhotons_DDMC(MeshData<Real> *md, const Real t_start, const R
   auto pm = md->GetParentPointer();
   auto &resolved_pkgs = pm->resolved_packages;
   auto &jb_pkg = pm->packages.Get("jaybenne");
-  auto &eos = jb_pkg->template Param<EOS>("eos_d");
-  auto &mopacity = jb_pkg->template Param<MeanOpacity>("mopacity_d");
-  auto &mscattering = jb_pkg->template Param<MeanScattering>("mscattering_d");
   auto &rng_pool = jb_pkg->template Param<RngPool>("rng_pool");
   const Real vv = jb_pkg->template Param<Real>("speed_of_light");
+  const Real ske = 0.5 * SQR(vv);
   const Real &tau_ddmc = jb_pkg->template Param<Real>("tau_ddmc");
 
   // Create SparsePack
   static auto desc =
-      MakePackDescriptor<fjh::density, fjh::sie, fj::fleck_factor, fj::ddmc_face_prob,
-                         fj::energy_delta>(resolved_pkgs.get());
+      MakePackDescriptor<fj::fleck_factor, fj::ddmc_face_prob, fj::energy_delta,
+                         fjh::absorption_opacity, fjh::scattering_opacity>(
+          resolved_pkgs.get());
   auto vmesh = desc.GetPack(md);
 
   // Create SwarmPacks
@@ -57,6 +57,9 @@ TaskStatus TransportPhotons_DDMC(MeshData<Real> *md, const Real t_start, const R
   static auto pdesc_i = MakeSwarmPackDescriptor<ph::ijk>(photons_swarm_name);
   auto ppack_r = pdesc_r.GetPack(md);
   auto ppack_i = pdesc_i.GetPack(md);
+
+  // set tolerance for checking particle 0-velocity (i.e. if from DDMC block)
+  constexpr Real eps = parthenon::robust::EPS();
 
   // Indexing and dimensionality
   const auto &ib = md->GetBoundsI(IndexDomain::interior);
@@ -125,13 +128,9 @@ TaskStatus TransportPhotons_DDMC(MeshData<Real> *md, const Real t_start, const R
             const Real zu = coords.template Xc<parthenon::X3DIR>(kp) + 0.5 * dx_k;
 
             // Extract physical quantities
-            const Real &rho = vmesh(b, fjh::density(), kp, jp, ip);
-            const Real &sie = vmesh(b, fjh::sie(), kp, jp, ip);
-            const Real temp = eos.TemperatureFromDensityInternalEnergy(rho, sie);
             const Real &ff = vmesh(b, fj::fleck_factor(), kp, jp, ip);
-            const Real ss =
-                mscattering.RosselandMeanTotalScatteringCoefficient(rho, temp);
-            const Real aa = mopacity.AbsorptionCoefficient(rho, temp);
+            const Real &ss = vmesh(b, fjh::scattering_opacity(), kp, jp, ip);
+            const Real &aa = vmesh(b, fjh::absorption_opacity(), kp, jp, ip);
 
             // reset collision indicators
             bool is_absorbed = false;
@@ -178,13 +177,13 @@ TaskStatus TransportPhotons_DDMC(MeshData<Real> *md, const Real t_start, const R
                                   ww, fraction, e_abs, ip, jp, kp, is_absorbed, is_scattered};
               // clang-format on
 
-              // check for IMC-DDMC albedo rejection if this particle just arrived from an
-              // IMC region
-              ptcl_ddmc_albedo(dia, is_rejected);
+              // check for IMC-DDMC albedo rejection if particle arrived from IMC region
+              if (SQR(vx) + SQR(vy) + SQR(vz) > ske) ptcl_ddmc_albedo(dia, is_rejected);
 
               if (!is_rejected) ptcl_ddmc_step(dia);
 
             } else {
+
               // push particle
               // clang-format off
               Real e_absorbed = 0.0;
@@ -197,6 +196,12 @@ TaskStatus TransportPhotons_DDMC(MeshData<Real> *md, const Real t_start, const R
                                   xl, yl, zl, xu, yu, zu,
                                   // updated by push
                                   t, x, y, z, ww, fraction, e_absorbed, is_absorbed, is_scattered};
+
+              // if v==0, particle is from a DDMC cell in another block at <= refinement
+              if (SQR(vx) + SQR(vy) + SQR(vz) < 2.0 * eps * ske) ptcl_ddmc_to_imc(tra);
+              PARTHENON_DEBUG_REQUIRE(SQR(vx) + SQR(vy) + SQR(vz) > ske,
+                                      "Invalid velocity: lower than lightspeed");
+
               // clang-format on
               ptcl_transport_step(tra);
             }

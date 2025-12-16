@@ -66,12 +66,18 @@ std::shared_ptr<StateDescriptor> Initialize(ParameterInput *pin) {
 
   // Density and total energy fields
   Metadata m = Metadata({Metadata::Cell, Metadata::FillGhost, Metadata::OneCopy,
-                         Metadata::ForceRemeshComm});
+                         Metadata::ForceRemeshComm, Metadata::Restart});
   pkg->AddField(field::material::density::name(), m);
   pkg->AddField(field::material::internal_energy::name(), m);
 
-  // Volumetric internal energy and specific internal energy
+  // opacity fields
   m = Metadata({Metadata::Cell, Metadata::Derived, Metadata::OneCopy});
+  // TODO: maybe worth filling ghosts for expedited DDMC stencil
+  pkg->AddField(field::material::absorption_opacity::name(), m);
+  pkg->AddField(field::material::scattering_opacity::name(), m);
+
+  // Volumetric internal energy and specific internal energy
+  m = Metadata({Metadata::Cell, Metadata::Derived, Metadata::OneCopy, Metadata::Restart});
   pkg->AddField(field::material::sie::name(), m);
 
   // Equation of state
@@ -206,20 +212,31 @@ std::shared_ptr<StateDescriptor> Initialize(ParameterInput *pin) {
 //! \fn  void ProblemGenerator
 //! \brief Generate initial conditions for problems
 void ProblemGenerator(MeshBlock *pmb, ParameterInput *pin) {
+  PARTHENON_INSTRUMENT
   namespace fm = field::material;
 
   auto mbd = pmb->meshblock_data.Get().get();
   auto &resolved_pkgs = pmb->resolved_packages;
 
   auto &mcb = pmb->packages.Get("mcblock");
+  // TODO: move device opacity objects from jaybenne to mcblock
+  auto &jbn = pmb->packages.Get("jaybenne");
+  const auto &frequency_type = mcb->Param<FrequencyType>("frequency_type");
   const Real &rho0 = mcb->template Param<Real>("initial_density");
   const Real &tt0 = mcb->template Param<Real>("initial_temperature");
   const auto &initial_radiation =
       mcb->template Param<InitialRadiation>("initial_radiation");
   auto eos = mcb->template Param<EOS>("eos_d");
+  MeanOpacity mopacity;
+  MeanScattering mscattering;
+  if (frequency_type == FrequencyType::gray) {
+    mopacity = jbn->template Param<MeanOpacity>("mopacity_d");
+    mscattering = jbn->template Param<MeanScattering>("mscattering_d");
+  }
 
   // Create SparsePack
-  static auto desc = MakePackDescriptor<fm::density, fm::sie>(resolved_pkgs.get());
+  static auto desc = MakePackDescriptor<fm::density, fm::sie, fm::absorption_opacity,
+                                        fm::scattering_opacity>(resolved_pkgs.get());
   auto vmesh = desc.GetPack(mbd);
 
   // Indexing and dimensionality
@@ -253,6 +270,22 @@ void ProblemGenerator(MeshBlock *pmb, ParameterInput *pin) {
         });
   }
 
+  // initialize opacity (TODO: only gray for now)
+  if (frequency_type == FrequencyType::gray) {
+    parthenon::par_for(
+        DEFAULT_LOOP_PATTERN, "Initialize opacity", parthenon::DevExecSpace(), 0,
+        nblocks - 1, kb.s, kb.e, jb.s, jb.e, ib.s, ib.e,
+        KOKKOS_LAMBDA(const int &b, const int &k, const int &j, const int &i) {
+          const Real &rho = vmesh(b, fm::density(), k, j, i);
+          const Real &sie = vmesh(b, fm::sie(), k, j, i);
+          const Real temp = eos.TemperatureFromDensityInternalEnergy(rho, sie);
+          const Real aa = mopacity.AbsorptionCoefficient(rho, temp);
+          const Real ss = mscattering.RosselandMeanTotalScatteringCoefficient(rho, temp);
+          vmesh(b, fm::absorption_opacity(), k, j, i) = aa;
+          vmesh(b, fm::scattering_opacity(), k, j, i) = ss;
+        });
+  }
+
   jaybenne::InitializeRadiation(mbd, (initial_radiation == InitialRadiation::thermal));
 }
 
@@ -260,14 +293,29 @@ void ProblemGenerator(MeshBlock *pmb, ParameterInput *pin) {
 //! \fn void UpdateDerived
 //! \brief Updates Mcblock derived variables following a Jaybenne step
 void UpdateDerived(MeshData<Real> *md) {
+  PARTHENON_INSTRUMENT
+  namespace fm = field::material;
   using parthenon::MakePackDescriptor;
   auto pm = md->GetParentPointer();
   auto &resolved_pkgs = pm->resolved_packages;
+  auto &jbn = pm->packages.Get("jaybenne");
+  auto &mcb = pm->packages.Get("mcblock");
+  auto eos = mcb->template Param<EOS>("eos_d");
+
+  const auto &frequency_type = mcb->template Param<FrequencyType>("frequency_type");
+
+  MeanOpacity mopacity;
+  MeanScattering mscattering;
+  if (frequency_type == FrequencyType::gray) {
+    mopacity = jbn->template Param<MeanOpacity>("mopacity_d");
+    mscattering = jbn->template Param<MeanScattering>("mscattering_d");
+  }
 
   // Packing and indexing
-  static auto desc =
-      MakePackDescriptor<field::material::density, field::material::internal_energy,
-                         field::material::sie>(resolved_pkgs.get());
+  static auto desc = MakePackDescriptor<fm::density, fm::internal_energy, fm::sie,
+                                        fm::absorption_opacity, fm::scattering_opacity>(
+      resolved_pkgs.get());
+
   auto vmesh = desc.GetPack(md);
   IndexRange ibe = md->GetBoundsI(IndexDomain::entire);
   IndexRange jbe = md->GetBoundsJ(IndexDomain::entire);
@@ -278,17 +326,34 @@ void UpdateDerived(MeshData<Real> *md) {
       vmesh.GetNBlocks() - 1, kbe.s, kbe.e, jbe.s, jbe.e, ibe.s, ibe.e,
       KOKKOS_LAMBDA(const int &b, const int &k, const int &j, const int &i) {
         // Set derived fields
-        Real &dd = vmesh(b, field::material::density(), k, j, i);
-        Real &uu = vmesh(b, field::material::internal_energy(), k, j, i);
-        Real &sie = vmesh(b, field::material::sie(), k, j, i);
+        Real &dd = vmesh(b, fm::density(), k, j, i);
+        Real &uu = vmesh(b, fm::internal_energy(), k, j, i);
+        Real &sie = vmesh(b, fm::sie(), k, j, i);
         sie = uu / dd;
       });
+
+  // update opacity (TODO: only gray for now)
+  if (frequency_type == FrequencyType::gray) {
+    parthenon::par_for(
+        DEFAULT_LOOP_PATTERN, "Update opacity", parthenon::DevExecSpace(), 0,
+        vmesh.GetNBlocks() - 1, kbe.s, kbe.e, jbe.s, jbe.e, ibe.s, ibe.e,
+        KOKKOS_LAMBDA(const int &b, const int &k, const int &j, const int &i) {
+          const Real &rho = vmesh(b, fm::density(), k, j, i);
+          const Real &sie = vmesh(b, fm::sie(), k, j, i);
+          const Real temp = eos.TemperatureFromDensityInternalEnergy(rho, sie);
+          const Real aa = mopacity.AbsorptionCoefficient(rho, temp);
+          const Real ss = mscattering.RosselandMeanTotalScatteringCoefficient(rho, temp);
+          vmesh(b, fm::absorption_opacity(), k, j, i) = aa;
+          vmesh(b, fm::scattering_opacity(), k, j, i) = ss;
+        });
+  }
 }
 
 //----------------------------------------------------------------------------------------
 //! \fn void PostInitialization
 //! \brief
 void PostInitialization(MeshBlock *pmb, ParameterInput *pin) {
+  PARTHENON_INSTRUMENT
   using parthenon::MakePackDescriptor;
   auto md = pmb->meshblock_data.Get().get();
   auto pm = md->GetParentPointer();

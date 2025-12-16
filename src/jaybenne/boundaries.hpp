@@ -23,6 +23,7 @@ namespace jaybenne {
 //! \brief Reflecting boundary conditions for all boundaries for photons
 template <BoundaryFace BFACE>
 void PhotonReflectBC(std::shared_ptr<Swarm> &swarm) {
+  PARTHENON_INSTRUMENT
 
   auto swarm_d_ = swarm->GetDeviceContext();
   int max_active_index = swarm->GetMaxActiveIndex();

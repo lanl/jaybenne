@@ -14,6 +14,9 @@
 // C++ includes
 #include <limits>
 
+// Parthenon includes
+#include <utils/robust.hpp>
+
 // Jaybenne includes
 #include "jaybenne.hpp"
 #include "jaybenne_utils.hpp"
@@ -27,6 +30,7 @@ namespace jaybenne {
 //! TODO(BRR) modify interface so we don't need t_start, dt for initialization
 template <typename T, SourceType ST, FrequencyType FT>
 TaskStatus SourcePhotons(T *md, const Real t_start, const Real dt) {
+  PARTHENON_INSTRUMENT
   namespace fj = field::jaybenne;
   namespace fjh = field::jaybenne::host;
   namespace ph = particle::photons;
@@ -61,6 +65,7 @@ TaskStatus SourcePhotons(T *md, const Real t_start, const Real dt) {
   // Extract params
   auto &rng_pool = jb_pkg->template Param<RngPool>("rng_pool");
   const int &num_particles = jb_pkg->template Param<int>("num_particles");
+  const Real &dnpc_min = jb_pkg->template Param<Real>("dnpc_min");
   const Real &vv = jb_pkg->template Param<Real>("speed_of_light");
   const Real &sb = jb_pkg->template Param<Real>("stefan_boltzmann");
 
@@ -158,7 +163,7 @@ TaskStatus SourcePhotons(T *md, const Real t_start, const Real dt) {
               // introducing supplementary functions/tasks that set these, or even
               // giving downstream codes the opportunity to set these themselves...
               snpc = npc;
-              dnum = std::max(std::round((snpc > actnum) * (snpc - actnum)), 20.0);
+              dnum = std::max(std::round((snpc > actnum) * (snpc - actnum)), dnpc_min);
               sewpc = erad / dnum;
               ntot += static_cast<int>(dnum);
             },
@@ -196,6 +201,9 @@ TaskStatus SourcePhotons(T *md, const Real t_start, const Real dt) {
   static auto pdesc_i = MakeSwarmPackDescriptor<ph::ijk>(photons_swarm_name);
   auto ppack_r = pdesc_r.GetPack(md);
   auto ppack_i = pdesc_i.GetPack(md);
+
+  constexpr Real eps = 4.0e8 * parthenon::robust::EPS();
+  const Real ome = 1.0 - eps;
 
   parthenon::par_for(
       DEFAULT_LOOP_PATTERN, "SourcePhotons2", parthenon::DevExecSpace(), 0, nblocks - 1,
@@ -240,9 +248,9 @@ TaskStatus SourcePhotons(T *md, const Real t_start, const Real dt) {
 
           // Sample position uniformly in space over cell
           // TODO(BRR) only valid for Cartesian
-          ppack_r(b, swarm_position::x(), n) = xi + dx_i * (rng_gen.drand() - 0.5);
-          ppack_r(b, swarm_position::y(), n) = yi + dx_j * (rng_gen.drand() - 0.5);
-          ppack_r(b, swarm_position::z(), n) = zi + dx_k * (rng_gen.drand() - 0.5);
+          ppack_r(b, swarm_position::x(), n) = xi + dx_i * ome * (rng_gen.drand() - 0.5);
+          ppack_r(b, swarm_position::y(), n) = yi + dx_j * ome * (rng_gen.drand() - 0.5);
+          ppack_r(b, swarm_position::z(), n) = zi + dx_k * ome * (rng_gen.drand() - 0.5);
 
           // Sample direction uniformly in solid angle
           const Real theta = std::acos(2.0 * rng_gen.drand() - 1.0);
