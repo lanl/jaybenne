@@ -53,7 +53,7 @@ TaskStatus TransportPhotons_DDMC(MeshData<Real> *md, const Real t_start, const R
 
   // Create SwarmPacks
   static auto pdesc_r = MakeSwarmPackDescriptor<sp::x, sp::y, sp::z, ph::v, ph::energy,
-                                                ph::weight, ph::fraction, ph::time>(photons_swarm_name);
+                                                ph::weight, ph::time>(photons_swarm_name);
   static auto pdesc_i = MakeSwarmPackDescriptor<ph::ijk>(photons_swarm_name);
   auto ppack_r = pdesc_r.GetPack(md);
   auto ppack_i = pdesc_i.GetPack(md);
@@ -90,9 +90,8 @@ TaskStatus TransportPhotons_DDMC(MeshData<Real> *md, const Real t_start, const R
           Real &vx = ppack_r(b, ph::v(0), n);
           Real &vy = ppack_r(b, ph::v(1), n);
           Real &vz = ppack_r(b, ph::v(2), n);
-          Real &ww = ppack_r(b, ph::weight(), n);
-          Real &fraction = ppack_r(b, ph::fraction(), n);
-          Real &ee = ppack_r(b, ph::energy(), n);
+          const Real &ww = ppack_r(b, ph::weight(), n);
+          const Real &ee = ppack_r(b, ph::energy(), n);
 
           // Position and logical location of particle
           Real &x = ppack_r(b, sp::x(), n);
@@ -161,7 +160,6 @@ TaskStatus TransportPhotons_DDMC(MeshData<Real> *md, const Real t_start, const R
                   three_d ? vmesh(b, TE::F3, fj::ddmc_face_prob(), kp, jp, ip) : 0.0;
               const Real &Pz_u =
                   three_d ? vmesh(b, TE::F3, fj::ddmc_face_prob(), kp + 1, jp, ip) : 0.0;
-              Real e_abs = 0.0;
 
               // create DDMC step argument list
               // clang-format off
@@ -174,7 +172,7 @@ TaskStatus TransportPhotons_DDMC(MeshData<Real> *md, const Real t_start, const R
                                   Px_l, Py_l, Pz_l, Px_u, Py_u, Pz_u,
                                   // updated by push
                                   t, x, y, z, vx, vy, vz,
-                                  ww, fraction, e_abs, ip, jp, kp, is_absorbed, is_scattered};
+                                  ip, jp, kp, is_absorbed, is_scattered};
               // clang-format on
 
               // check for IMC-DDMC albedo rejection if particle arrived from IMC region
@@ -186,7 +184,6 @@ TaskStatus TransportPhotons_DDMC(MeshData<Real> *md, const Real t_start, const R
 
               // push particle
               // clang-format off
-              Real e_absorbed = 0.0;
               tran_step_args tra{ // constants
                                   rng_gen,
                                   t_start, dt,
@@ -195,7 +192,7 @@ TaskStatus TransportPhotons_DDMC(MeshData<Real> *md, const Real t_start, const R
                                   dx_push, multi_d, three_d,
                                   xl, yl, zl, xu, yu, zu,
                                   // updated by push
-                                  t, x, y, z, ww, fraction, e_absorbed, is_absorbed, is_scattered};
+                                  t, x, y, z, is_absorbed, is_scattered};
 
               // if v==0, particle is from a DDMC cell in another block at <= refinement
               if (SQR(vx) + SQR(vy) + SQR(vz) < 2.0 * eps * ske) ptcl_ddmc_to_imc(tra);

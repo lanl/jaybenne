@@ -123,11 +123,7 @@ void ptcl_transport_step(tran_step_args tra) {
   // use distances and convert to time after min is determined to reduce division ops
   constexpr Real rmin = std::numeric_limits<Real>::min();
   constexpr Real rmax = std::numeric_limits<Real>::max();
-  constexpr Real cutoff = 1.0e-6;
-  const bool analog = tra.fraction < cutoff;
-  const Real lam_abs = 1.0 / (tra.ff * tra.aa + rmin);
   const Real lam_sc = 1.0 / (tra.ss + (1.0 - tra.ff) * tra.aa + rmin);
-  const Real dx_abs = (analog) ? -lam_abs * std::log(tra.rng_gen.drand()) : rmax;
   const Real dx_sc = -lam_sc * std::log(tra.rng_gen.drand());
   const Real dx_end = tra.vv * ((tra.t_start + tra.dt) - tra.t);
   Real dx_push = std::min(tra.dx_push, dx_end);
@@ -145,13 +141,12 @@ void ptcl_transport_step(tran_step_args tra) {
             ((dx_push)))) : dx_push;
   // clang-format on
 
-  // set collision indicators
-  tra.is_absorbed = ((dx_abs < dx_push) && (dx_abs < dx_sc));
-  tra.is_scattered = (!(tra.is_absorbed) && (dx_sc < dx_push));
+  // set scattered indicators
+  tra.is_scattered = (dx_sc < dx_push);
 
   // set distance to translate particle position
   const Real dt_push =
-      ((tra.is_absorbed) ? dx_abs : ((tra.is_scattered) ? dx_sc : dx_push)) / tra.vv;
+      ((tra.is_scattered) ? dx_sc : dx_push) / tra.vv;
 
   // push
   tra.t += dt_push;
@@ -159,8 +154,8 @@ void ptcl_transport_step(tran_step_args tra) {
   tra.y += tra.multi_d * tra.vy * dt_push;
   tra.z += tra.three_d * tra.vz * dt_push;
 
-  // attenuate particle if non-analog
-  const Real exp_factor = (analog) ? 1.0 : exp(-dt_push*tra.ff*tra.aa);
+  // attenuate particle
+  const Real exp_factor = exp(-dx_push*tra.ff*tra.aa);
   tra.e_abs = tra.ww*(1.0-exp_factor);
   tra.ww = tra.ww - tra.e_abs;
   tra.fraction = tra.fraction*exp_factor;

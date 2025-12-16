@@ -160,7 +160,6 @@ TaskStatus TransportPhotons(MeshData<Real> *md, const Real t_start, const Real d
             }
 
             // reset collision indicators
-            bool is_absorbed = false;
             bool is_scattered = false;
 
             Real e_abs = 0.0;
@@ -175,7 +174,7 @@ TaskStatus TransportPhotons(MeshData<Real> *md, const Real t_start, const Real d
                                 dx_push, multi_d, three_d,
                                 xl, yl, zl, xu, yu, zu,
                                 // updated by push
-                                t, x, y, z, ww, fraction, e_abs, is_absorbed, is_scattered};
+                                t, x, y, z, ww, fraction, e_abs, is_scattered};
             // clang-format on
             ptcl_transport_step(tra);
             swarm_d.Xtoijk(x, y, z, ip, jp, kp);
@@ -184,18 +183,22 @@ TaskStatus TransportPhotons(MeshData<Real> *md, const Real t_start, const Real d
             bool on_current_mesh_block;
             swarm_d.GetNeighborBlockIndex(n, x, y, z, on_current_mesh_block);
             if (!on_current_mesh_block) {
-              PARTHENON_DEBUG_REQUIRE(!(is_absorbed || is_scattered),
+              PARTHENON_DEBUG_REQUIRE(!(is_scattered),
                                       "Absorption/scattering event off block!");
               break;
             }
 
-            if (!is_absorbed) {
-              // process absorption
+            // absorbed energy and cutoff processing
+            constexpr Real cutoff = 1.0e-6;
+            const bool analog = tra.fraction < cutoff;
+
+            if (fraction >= cutoff) {
+              // process continuous absorption
               Real &dejbn = vmesh(b, fj::energy_delta(), kp, jp, ip);
               Kokkos::atomic_add(&dejbn, e_abs);
             }
             else {
-              // process absorption
+              // process cutoff absorption
               Real &dejbn = vmesh(b, fj::energy_delta(), kp, jp, ip);
               Kokkos::atomic_add(&dejbn, ww);
               swarm_d.MarkParticleForRemoval(n);
