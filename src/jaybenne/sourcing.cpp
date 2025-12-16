@@ -95,7 +95,7 @@ TaskStatus SourcePhotons(T *md, const Real t_start, const Real dt) {
                         (num_cells * md->GetMeshPointer()->nbtotal));
 
   // adjust particle number per cell up if threshold temperature is used
-  if (emit_temp_th > 0.0) {
+  if (emit_temp_th > 0.0 && ST == SourceType::emission) {
     // count the number of cells above the temperature threshold
     Real ncell_abv_th = 0.0;
     global_sum_reduce(
@@ -193,7 +193,7 @@ TaskStatus SourcePhotons(T *md, const Real t_start, const Real dt) {
               // NOTE(PDM): We hardcode snpc and sewpc below, but we could imagine
               // introducing supplementary functions/tasks that set these, or even
               // giving downstream codes the opportunity to set these themselves...
-              if (temp > emit_temp_th) {
+              if (temp > emit_temp_th || ST == SourceType::thermal) {
                 snpc = npc;
                 dnum = std::max(std::round((snpc > actnum) * (snpc - actnum)), dnpc_min);
                 sewpc = erad / dnum;
@@ -338,23 +338,11 @@ template TaskStatus
 SourcePhotons<MeshBlockData<Real>, SourceType::thermal, FrequencyType::gray>(
     MeshBlockData<Real> *md, const Real t0, const Real dt);
 template TaskStatus
-SourcePhotons<MeshBlockData<Real>, SourceType::emission, FrequencyType::gray>(
-    MeshBlockData<Real> *md, const Real t0, const Real dt);
-template TaskStatus
-SourcePhotons<MeshData<Real>, SourceType::thermal, FrequencyType::gray>(
-    MeshData<Real> *md, const Real t0, const Real dt);
-template TaskStatus
 SourcePhotons<MeshData<Real>, SourceType::emission, FrequencyType::gray>(
     MeshData<Real> *md, const Real t0, const Real dt);
 template TaskStatus
 SourcePhotons<MeshBlockData<Real>, SourceType::thermal, FrequencyType::multigroup>(
     MeshBlockData<Real> *md, const Real t0, const Real dt);
-template TaskStatus
-SourcePhotons<MeshBlockData<Real>, SourceType::emission, FrequencyType::multigroup>(
-    MeshBlockData<Real> *md, const Real t0, const Real dt);
-template TaskStatus
-SourcePhotons<MeshData<Real>, SourceType::thermal, FrequencyType::multigroup>(
-    MeshData<Real> *md, const Real t0, const Real dt);
 template TaskStatus
 SourcePhotons<MeshData<Real>, SourceType::emission, FrequencyType::multigroup>(
     MeshData<Real> *md, const Real t0, const Real dt);
