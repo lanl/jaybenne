@@ -264,6 +264,8 @@ Initialize_impl(ParameterInput *pin, EOS &eos,
     PARTHENON_FAIL("Only uniform or energy source strategies supported!");
   }
   pkg->AddParam<>("source_strategy", source_strategy);
+  Real emit_temp_threshold = pin->GetOrAddReal(block_name, "emit_temp_threshold", 0.0);
+  pkg->AddParam<>("emit_temp_threshold", emit_temp_threshold);
 
   // Whether to include emission physics
   const bool do_emission = pin->GetOrAddBoolean(block_name, "do_emission", true);
