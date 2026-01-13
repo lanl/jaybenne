@@ -43,6 +43,7 @@ TaskStatus TransportPhotons_DDMC(MeshData<Real> *md, const Real t_start, const R
   const Real vv = jb_pkg->template Param<Real>("speed_of_light");
   const Real ske = 0.5 * SQR(vv);
   const Real &tau_ddmc = jb_pkg->template Param<Real>("tau_ddmc");
+  const Real cutoff = jb_pkg->template Param<Real>("cutoff");
 
   // Create SparsePack
   static auto desc =
@@ -53,7 +54,7 @@ TaskStatus TransportPhotons_DDMC(MeshData<Real> *md, const Real t_start, const R
 
   // Create SwarmPacks
   static auto pdesc_r = MakeSwarmPackDescriptor<sp::x, sp::y, sp::z, ph::v, ph::energy,
-                                                ph::weight, ph::time>(photons_swarm_name);
+                                                ph::weight, ph::fraction, ph::time>(photons_swarm_name);
   static auto pdesc_i = MakeSwarmPackDescriptor<ph::ijk>(photons_swarm_name);
   auto ppack_r = pdesc_r.GetPack(md);
   auto ppack_i = pdesc_i.GetPack(md);
@@ -90,8 +91,9 @@ TaskStatus TransportPhotons_DDMC(MeshData<Real> *md, const Real t_start, const R
           Real &vx = ppack_r(b, ph::v(0), n);
           Real &vy = ppack_r(b, ph::v(1), n);
           Real &vz = ppack_r(b, ph::v(2), n);
-          const Real &ww = ppack_r(b, ph::weight(), n);
-          const Real &ee = ppack_r(b, ph::energy(), n);
+          Real &ww = ppack_r(b, ph::weight(), n);
+          Real &fraction = ppack_r(b, ph::fraction(), n);
+          Real &ee = ppack_r(b, ph::energy(), n);
 
           // Position and logical location of particle
           Real &x = ppack_r(b, sp::x(), n);
@@ -135,7 +137,10 @@ TaskStatus TransportPhotons_DDMC(MeshData<Real> *md, const Real t_start, const R
             bool is_absorbed = false;
             bool is_scattered = false;
             bool is_rejected = false;
+            bool is_census = false;
+
             const bool is_ddmc_step = dx_push * (ss + aa) > tau_ddmc;
+            Real e_abs = 0.0;
 
             if (is_ddmc_step) {
               // Update cell of particle
@@ -172,7 +177,7 @@ TaskStatus TransportPhotons_DDMC(MeshData<Real> *md, const Real t_start, const R
                                   Px_l, Py_l, Pz_l, Px_u, Py_u, Pz_u,
                                   // updated by push
                                   t, x, y, z, vx, vy, vz,
-                                  ip, jp, kp, is_absorbed, is_scattered};
+                                  ip, jp, kp, is_absorbed, is_scattered, is_census};
               // clang-format on
 
               // check for IMC-DDMC albedo rejection if particle arrived from IMC region
@@ -192,7 +197,7 @@ TaskStatus TransportPhotons_DDMC(MeshData<Real> *md, const Real t_start, const R
                                   dx_push, multi_d, three_d,
                                   xl, yl, zl, xu, yu, zu,
                                   // updated by push
-                                  t, x, y, z, is_absorbed, is_scattered};
+                                  t, x, y, z, ww, fraction, e_abs, is_scattered, is_census, is_absorbed};
 
               // if v==0, particle is from a DDMC cell in another block at <= refinement
               if (SQR(vx) + SQR(vy) + SQR(vz) < 2.0 * eps * ske) ptcl_ddmc_to_imc(tra);
@@ -200,7 +205,7 @@ TaskStatus TransportPhotons_DDMC(MeshData<Real> *md, const Real t_start, const R
                                       "Invalid velocity: lower than lightspeed");
 
               // clang-format on
-              ptcl_transport_step(tra);
+              ptcl_transport_step(tra, cutoff);
             }
 
             // Update cell of particle
@@ -219,8 +224,18 @@ TaskStatus TransportPhotons_DDMC(MeshData<Real> *md, const Real t_start, const R
               break;
             }
 
+            // don't do an atomic if particle is not absorbed and deposits no energy
+            // e.g., analog particle that reaches census or analog DDMC particle
+            //exiting DDMC region
+
+            if(e_abs > 0.0) {
+              // process continuous absorption
+              Real &dejbn = vmesh(b, fj::energy_delta(), kp, jp, ip);
+              Kokkos::atomic_add(&dejbn, e_abs);
+            }
+
             if (is_absorbed) {
-              // process absorption
+              // process analog absorption or DDMC absorption
               Real &dejbn = vmesh(b, fj::energy_delta(), kp, jp, ip);
               Kokkos::atomic_add(&dejbn, ww);
               swarm_d.MarkParticleForRemoval(n);
@@ -232,6 +247,11 @@ TaskStatus TransportPhotons_DDMC(MeshData<Real> *md, const Real t_start, const R
               // TODO(BRR): if eff scatter, redistribute frequency
               // TODO(BRR): template on scattering model
               ScatterKernel(rng_gen, vv, vx, vy, vz);
+            }
+
+            if (is_census) {
+              // reset fraction of particles that make it census
+              ppack_r(b, ph::fraction(), n) = 1.0;
             }
           }
           rng_pool.free_state(rng_gen);

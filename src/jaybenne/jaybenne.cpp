@@ -253,6 +253,10 @@ Initialize_impl(ParameterInput *pin, EOS &eos,
   Real tau_ddmc = pin->GetOrAddReal(block_name, "tau_ddmc", 5.0);
   pkg->AddParam<>("tau_ddmc", tau_ddmc);
 
+  // parse or use defaul fractional weight cutoff (swtich to analog) of 1.0e-6
+  Real cutoff = pin->GetOrAddReal(block_name, "cutoff", 1.0e-6);
+  pkg->AddParam<>("cutoff", cutoff);
+
   // Sourcing strategy
   SourceStrategy source_strategy;
   std::string strategy = pin->GetOrAddString(block_name, "source_strategy", "uniform");
@@ -282,6 +286,7 @@ Initialize_impl(ParameterInput *pin, EOS &eos,
   Metadata mreal({Metadata::Real});
   pkg->AddSwarmValue(particle::photons::time::name(), photons_swarm_name, mreal);
   pkg->AddSwarmValue(particle::photons::weight::name(), photons_swarm_name, mreal);
+  pkg->AddSwarmValue(particle::photons::fraction::name(), photons_swarm_name, mreal);
   pkg->AddSwarmValue(particle::photons::energy::name(), photons_swarm_name, mreal);
   Metadata mrealv({Metadata::Real, Metadata::Vector}, std::vector<int>{3});
   pkg->AddSwarmValue(particle::photons::v::name(), photons_swarm_name, mrealv);

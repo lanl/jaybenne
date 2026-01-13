@@ -52,6 +52,7 @@ TaskStatus TransportPhotons(MeshData<Real> *md, const Real t_start, const Real d
   }
   auto &rng_pool = jb_pkg->template Param<RngPool>("rng_pool");
   const Real vv = jb_pkg->template Param<Real>("speed_of_light");
+  const Real cutoff = jb_pkg->template Param<Real>("cutoff");
 
   // Create SparsePack
   static auto desc =
@@ -161,6 +162,8 @@ TaskStatus TransportPhotons(MeshData<Real> *md, const Real t_start, const Real d
 
             // reset collision indicators
             bool is_scattered = false;
+            bool is_census = false;
+            bool is_absorbed = false;
 
             Real e_abs = 0.0;
 
@@ -174,9 +177,9 @@ TaskStatus TransportPhotons(MeshData<Real> *md, const Real t_start, const Real d
                                 dx_push, multi_d, three_d,
                                 xl, yl, zl, xu, yu, zu,
                                 // updated by push
-                                t, x, y, z, ww, fraction, e_abs, is_scattered};
+                                t, x, y, z, ww, fraction, e_abs, is_scattered, is_census, is_absorbed};
             // clang-format on
-            ptcl_transport_step(tra);
+            ptcl_transport_step(tra, cutoff);
             swarm_d.Xtoijk(x, y, z, ip, jp, kp);
 
             //  If particle has left this block, drop out of transport loop for comms
@@ -188,19 +191,18 @@ TaskStatus TransportPhotons(MeshData<Real> *md, const Real t_start, const Real d
               break;
             }
 
-            // absorbed energy and cutoff processing
-            constexpr Real cutoff = 1.0e-6;
-            const bool analog = tra.fraction < cutoff;
+            // don't do an atomic if particle is not absorbed and deposits no energy
+            // e.g., analog particle that reaches census
 
-            if (fraction >= cutoff) {
+            if (e_abs > 0.0) {
               // process continuous absorption
               Real &dejbn = vmesh(b, fj::energy_delta(), kp, jp, ip);
               Kokkos::atomic_add(&dejbn, e_abs);
             }
-            else {
-              // process cutoff absorption
+            if (is_absorbed) {
+              // process analog absorption or below cutoff particles
               Real &dejbn = vmesh(b, fj::energy_delta(), kp, jp, ip);
-              Kokkos::atomic_add(&dejbn, ww);
+              Kokkos::atomic_add(&dejbn, e_abs);
               swarm_d.MarkParticleForRemoval(n);
               break;
             }
@@ -230,10 +232,14 @@ TaskStatus TransportPhotons(MeshData<Real> *md, const Real t_start, const Real d
                 }
               }
             }
+
+            // TODO IF CENSUS, SET FRACTION TO ONE HERE
+            if (is_census) {
+              // reset fraction of particles that make it census
+              ppack_r(b, ph::fraction(), n) = 1.0;
+            }
           }
           rng_pool.free_state(rng_gen);
-          // reset fraction of particles that make it census
-          ppack_r(b, ph::fraction(), n) = 1.0;
         }
       });
 
