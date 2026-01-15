@@ -120,15 +120,16 @@ KOKKOS_FORCEINLINE_FUNCTION
 void ptcl_transport_step(tran_step_args tra, const double cutoff) {
 
   // use distances and convert to time after min is determined to reduce division ops
-  enum Event {BOUND, COLLISION, CENSUS};
+  enum Event { BOUND, COLLISION, CENSUS };
 
   constexpr Real rmin = std::numeric_limits<Real>::min();
   constexpr Real rmax = std::numeric_limits<Real>::max();
 
   // scatter
-  const Real sigma_scatter =tra.ss + (1.0 - tra.ff) * tra.aa;
-  const Real sigma_collision = sigma_scatter + ((tra.fraction < cutoff) ? tra.ff * tra.aa : 0.0);
-  const Real lam_collision = 1.0 / (sigma_collision +  rmin);
+  const Real sigma_scatter = tra.ss + (1.0 - tra.ff) * tra.aa;
+  const Real sigma_collision =
+      sigma_scatter + ((tra.fraction < cutoff) ? tra.ff * tra.aa : 0.0);
+  const Real lam_collision = 1.0 / (sigma_collision + rmin);
   const Real dx_collision = -lam_collision * std::log(tra.rng_gen.drand());
 
   // census
@@ -137,32 +138,36 @@ void ptcl_transport_step(tran_step_args tra, const double cutoff) {
   int face = -1;
   Real dx_bound = rmax;
   Real dx_push_x = (tra.vx > 0.0) ? tra.vv * (tra.xu - tra.x) / tra.vx
-                             : tra.vv * (tra.xl - tra.x) / tra.vx;
+                                  : tra.vv * (tra.xl - tra.x) / tra.vx;
   Real dx_push_y = rmax;
-  if(tra.multi_d)  dx_push_y = (tra.vy > 0.0) ? tra.vv * (tra.yu - tra.y) / tra.vy : tra.vv * (tra.yl - tra.y) / tra.vy;
+  if (tra.multi_d)
+    dx_push_y = (tra.vy > 0.0) ? tra.vv * (tra.yu - tra.y) / tra.vy
+                               : tra.vv * (tra.yl - tra.y) / tra.vy;
 
   Real dx_push_z = rmax;
-  if(tra.three_d) dx_push_z = (tra.vz > 0.0) ? tra.vv * (tra.zu - tra.z) / tra.vz : tra.vv * (tra.zl - tra.z) / tra.vz;
+  if (tra.three_d)
+    dx_push_z = (tra.vz > 0.0) ? tra.vv * (tra.zu - tra.z) / tra.vz
+                               : tra.vv * (tra.zl - tra.z) / tra.vz;
 
   // default to x direction
   dx_bound = dx_push_x;
   face = (tra.vx > 0.0) ? 1 : 0;
   // y check
-  if ( (dx_push_y < dx_push_x) && (dx_push_y < dx_push_z) ) {
+  if ((dx_push_y < dx_push_x) && (dx_push_y < dx_push_z)) {
     dx_bound = dx_push_y;
     face = (tra.vy > 0.0) ? 3 : 2;
   }
   // z check
-  if ( (dx_push_z < dx_push_x) && (dx_push_z < dx_push_y)) {
+  if ((dx_push_z < dx_push_x) && (dx_push_z < dx_push_y)) {
     dx_bound = dx_push_z;
     face = (tra.vz > 0.0) ? 5 : 4;
   }
 
   // default to scatter
-  Real dx_push =  dx_collision;
+  Real dx_push = dx_collision;
   Event event = COLLISION;
   tra.is_scattered = true;
-  tra.is_census  = false;
+  tra.is_census = false;
 
   // check for census
   if (dx_end < dx_push) {
@@ -189,19 +194,18 @@ void ptcl_transport_step(tran_step_args tra, const double cutoff) {
   tra.z += tra.three_d * tra.vz * dt_push;
 
   if (tra.fraction < cutoff) {
-    if (event == COLLISION && tra.rng_gen.drand() > sigma_scatter/sigma_collision) {
+    if (event == COLLISION && tra.rng_gen.drand() > sigma_scatter / sigma_collision) {
       // post processing uses is_absorbed to deposit full particle energy into matieral
       tra.is_absorbed = true;
       tra.e_abs = 0.0;
       tra.is_scattered = false;
     }
-  }
-  else {
+  } else {
     // attenuate particle
-    const Real exp_factor = exp(-dx_push*tra.ff*tra.aa);
-    tra.e_abs = tra.ww*(1.0-exp_factor);
+    const Real exp_factor = exp(-dx_push * tra.ff * tra.aa);
+    tra.e_abs = tra.ww * (1.0 - exp_factor);
     tra.ww = tra.ww - tra.e_abs;
-    tra.fraction = tra.fraction*exp_factor;
+    tra.fraction = tra.fraction * exp_factor;
   }
 
   // push time slightly into next time step if particle is at end of time step (census)
@@ -210,18 +214,16 @@ void ptcl_transport_step(tran_step_args tra, const double cutoff) {
   tra.t = is_at_end ? tra.t_start + (1.0 + eps_imc_offset()) * tra.dt : tra.t;
 
   // handle face crossings by snapping to face and adding epsilon offset
-  if( event == BOUND) {
+  if (event == BOUND) {
     if (face == 0 || face == 1) {
       const Real offset = eps_imc_offset() * (tra.xu - tra.xl);
-      tra.x = (face==0) ? (tra.xl- offset) : tra.xu + offset;
-    }
-    else if (face == 2 || face == 3) {
+      tra.x = (face == 0) ? (tra.xl - offset) : tra.xu + offset;
+    } else if (face == 2 || face == 3) {
       const Real offset = eps_imc_offset() * (tra.yu - tra.yl);
-      tra.y = (face==2) ? (tra.yl - offset) : tra.yu + offset;
-    }
-    else { // (face == 4 || face == 5) {
+      tra.y = (face == 2) ? (tra.yl - offset) : tra.yu + offset;
+    } else { // (face == 4 || face == 5) {
       const Real offset = eps_imc_offset() * (tra.zu - tra.zl);
-      tra.z = (face==4) ? tra.zl -offset : tra.zu + offset;
+      tra.z = (face == 4) ? tra.zl - offset : tra.zu + offset;
     }
   }
 }

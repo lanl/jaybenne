@@ -62,8 +62,9 @@ TaskStatus TransportPhotons(MeshData<Real> *md, const Real t_start, const Real d
   auto vmesh = desc.GetPack(md);
 
   // Create SwarmPacks
-  static auto pdesc_r = MakeSwarmPackDescriptor<sp::x, sp::y, sp::z, ph::v, ph::energy,
-                                                ph::weight, ph::fraction, ph::time>(photons_swarm_name);
+  static auto pdesc_r =
+      MakeSwarmPackDescriptor<sp::x, sp::y, sp::z, ph::v, ph::energy, ph::weight,
+                              ph::fraction, ph::time>(photons_swarm_name);
   static auto pdesc_i = MakeSwarmPackDescriptor<ph::ijk>(photons_swarm_name);
   auto ppack_r = pdesc_r.GetPack(md);
   auto ppack_i = pdesc_i.GetPack(md);
@@ -191,8 +192,9 @@ TaskStatus TransportPhotons(MeshData<Real> *md, const Real t_start, const Real d
               Kokkos::atomic_add(&dejbn, e_abs);
             }
 
-            // continuous absorption with low cutoff allows particles to get to zero energy weights,
-            // kill them so they don't lead to division by zero in population control
+            // continuous absorption with low cutoff allows particles to get to zero
+            // energy weights, kill them so they don't lead to division by zero in
+            // population control
             if (!(ww > 0.0)) {
               swarm_d.MarkParticleForRemoval(n);
               break;
