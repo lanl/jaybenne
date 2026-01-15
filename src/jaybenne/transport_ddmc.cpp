@@ -221,6 +221,7 @@ TaskStatus TransportPhotons_DDMC(MeshData<Real> *md, const Real t_start, const R
             // continuous absorption with low cutoff allows particles to get to zero energy weights,
             // kill them so they don't lead to division by zero in population control
             if (!(ww > 0.0)) {
+              //std::cout<<"zero weight particle hit killed block"<<std::endl;
               swarm_d.MarkParticleForRemoval(n);
               break;
             }

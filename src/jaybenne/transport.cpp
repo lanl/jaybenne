@@ -198,7 +198,9 @@ TaskStatus TransportPhotons(MeshData<Real> *md, const Real t_start, const Real d
               break;
             }
 
+            // Update cell of particle
             swarm_d.Xtoijk(x, y, z, ip, jp, kp);
+
             //  If particle has left this block, drop out of transport loop for comms
             bool on_current_mesh_block;
             swarm_d.GetNeighborBlockIndex(n, x, y, z, on_current_mesh_block);

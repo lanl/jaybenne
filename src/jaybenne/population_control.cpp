@@ -209,10 +209,6 @@ TaskStatus ControlPopulation(MeshData<Real> *md, const int ncycle, const int ncy
 
           const Real &oldactew = vmesh(b, fj::old_active_ew_per_cell(), kp, jp, ip);
           const Real &actew = vmesh(b, fj::active_ew_per_cell(), kp, jp, ip);
-          if(!(oldactew > 0.0)) {
-            const Real &n_active = vmesh(b, fj::active_num_per_cell(), kp, jp, ip);
-            std::cout<<"oldactew: "<<oldactew<<" actew: "<<actew<< "count: "<<n_active<<std::endl;
-          }
           PARTHENON_DEBUG_REQUIRE(oldactew > 0.0, "Particle in cell with 0 particles!");
           ww *= (actew / oldactew);
         }
