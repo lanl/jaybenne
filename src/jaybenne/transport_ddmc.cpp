@@ -208,6 +208,23 @@ TaskStatus TransportPhotons_DDMC(MeshData<Real> *md, const Real t_start, const R
               ptcl_transport_step(tra, cutoff);
             }
 
+            // don't do an atomic if particle is not absorbed and deposits no energy
+            // e.g., analog particle that reaches census or analog DDMC particle
+            // exiting DDMC region
+
+            if(e_abs > 0.0) {
+              // process continuous absorption
+              Real &dejbn = vmesh(b, fj::energy_delta(), kp, jp, ip);
+              Kokkos::atomic_add(&dejbn, e_abs);
+            }
+
+            // continuous absorption with low cutoff allows particles to get to zero energy weights,
+            // kill them so they don't lead to division by zero in population control
+            if (!(ww > 0.0)) {
+              swarm_d.MarkParticleForRemoval(n);
+              break;
+            }
+
             // Update cell of particle
             swarm_d.Xtoijk(x, y, z, ip, jp, kp);
 
@@ -222,16 +239,6 @@ TaskStatus TransportPhotons_DDMC(MeshData<Real> *md, const Real t_start, const R
               vy *= vmask;
               vz *= vmask;
               break;
-            }
-
-            // don't do an atomic if particle is not absorbed and deposits no energy
-            // e.g., analog particle that reaches census or analog DDMC particle
-            //exiting DDMC region
-
-            if(e_abs > 0.0) {
-              // process continuous absorption
-              Real &dejbn = vmesh(b, fj::energy_delta(), kp, jp, ip);
-              Kokkos::atomic_add(&dejbn, e_abs);
             }
 
             if (is_absorbed) {

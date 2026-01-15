@@ -180,29 +180,38 @@ TaskStatus TransportPhotons(MeshData<Real> *md, const Real t_start, const Real d
                                 t, x, y, z, ww, fraction, e_abs, is_scattered, is_census, is_absorbed};
             // clang-format on
             ptcl_transport_step(tra, cutoff);
-            swarm_d.Xtoijk(x, y, z, ip, jp, kp);
 
-            //  If particle has left this block, drop out of transport loop for comms
-            bool on_current_mesh_block;
-            swarm_d.GetNeighborBlockIndex(n, x, y, z, on_current_mesh_block);
-            if (!on_current_mesh_block) {
-              PARTHENON_DEBUG_REQUIRE(!(is_scattered),
-                                      "Absorption/scattering event off block!");
-              break;
-            }
+            // treat continuous absorption first
 
             // don't do an atomic if particle is not absorbed and deposits no energy
             // e.g., analog particle that reaches census
-
             if (e_abs > 0.0) {
               // process continuous absorption
               Real &dejbn = vmesh(b, fj::energy_delta(), kp, jp, ip);
               Kokkos::atomic_add(&dejbn, e_abs);
             }
+
+            // continuous absorption with low cutoff allows particles to get to zero energy weights,
+            // kill them so they don't lead to division by zero in population control
+            if (!(ww > 0.0)) {
+              swarm_d.MarkParticleForRemoval(n);
+              break;
+            }
+
+            swarm_d.Xtoijk(x, y, z, ip, jp, kp);
+            //  If particle has left this block, drop out of transport loop for comms
+            bool on_current_mesh_block;
+            swarm_d.GetNeighborBlockIndex(n, x, y, z, on_current_mesh_block);
+            if (!on_current_mesh_block) {
+              PARTHENON_DEBUG_REQUIRE(!(is_scattered || is_absorbed),
+                                      "Absorption/scattering event off block!");
+              break;
+            }
+
             if (is_absorbed) {
               // process analog absorption or below cutoff particles
               Real &dejbn = vmesh(b, fj::energy_delta(), kp, jp, ip);
-              Kokkos::atomic_add(&dejbn, e_abs);
+              Kokkos::atomic_add(&dejbn, ww);
               swarm_d.MarkParticleForRemoval(n);
               break;
             }
@@ -233,7 +242,6 @@ TaskStatus TransportPhotons(MeshData<Real> *md, const Real t_start, const Real d
               }
             }
 
-            // TODO IF CENSUS, SET FRACTION TO ONE HERE
             if (is_census) {
               // reset fraction of particles that make it census
               ppack_r(b, ph::fraction(), n) = 1.0;
