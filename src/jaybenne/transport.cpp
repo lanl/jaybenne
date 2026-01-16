@@ -52,6 +52,7 @@ TaskStatus TransportPhotons(MeshData<Real> *md, const Real t_start, const Real d
   }
   auto &rng_pool = jb_pkg->template Param<RngPool>("rng_pool");
   const Real vv = jb_pkg->template Param<Real>("speed_of_light");
+  const Real cutoff = jb_pkg->template Param<Real>("cutoff");
 
   // Create SparsePack
   static auto desc =
@@ -61,8 +62,9 @@ TaskStatus TransportPhotons(MeshData<Real> *md, const Real t_start, const Real d
   auto vmesh = desc.GetPack(md);
 
   // Create SwarmPacks
-  static auto pdesc_r = MakeSwarmPackDescriptor<sp::x, sp::y, sp::z, ph::v, ph::energy,
-                                                ph::weight, ph::time>(photons_swarm_name);
+  static auto pdesc_r =
+      MakeSwarmPackDescriptor<sp::x, sp::y, sp::z, ph::v, ph::energy, ph::weight,
+                              ph::fraction, ph::time>(photons_swarm_name);
   static auto pdesc_i = MakeSwarmPackDescriptor<ph::ijk>(photons_swarm_name);
   auto ppack_r = pdesc_r.GetPack(md);
   auto ppack_i = pdesc_i.GetPack(md);
@@ -103,7 +105,8 @@ TaskStatus TransportPhotons(MeshData<Real> *md, const Real t_start, const Real d
           Real &vx = ppack_r(b, ph::v(0), n);
           Real &vy = ppack_r(b, ph::v(1), n);
           Real &vz = ppack_r(b, ph::v(2), n);
-          const Real &ww = ppack_r(b, ph::weight(), n);
+          Real &ww = ppack_r(b, ph::weight(), n);
+          Real &fraction = ppack_r(b, ph::fraction(), n);
           Real &ee = ppack_r(b, ph::energy(), n);
 
           // Position and logical location of particle
@@ -159,8 +162,11 @@ TaskStatus TransportPhotons(MeshData<Real> *md, const Real t_start, const Real d
             }
 
             // reset collision indicators
-            bool is_absorbed = false;
             bool is_scattered = false;
+            bool is_census = false;
+            bool is_absorbed = false;
+
+            Real e_abs = 0.0;
 
             // push particle
             // clang-format off
@@ -172,22 +178,42 @@ TaskStatus TransportPhotons(MeshData<Real> *md, const Real t_start, const Real d
                                 dx_push, multi_d, three_d,
                                 xl, yl, zl, xu, yu, zu,
                                 // updated by push
-                                t, x, y, z, is_absorbed, is_scattered};
+                                t, x, y, z, ww, fraction, e_abs, is_scattered, is_census, is_absorbed};
             // clang-format on
-            ptcl_transport_step(tra);
+            ptcl_transport_step(tra, cutoff);
+
+            // treat continuous absorption first
+
+            // don't do an atomic if particle is not absorbed and deposits no energy
+            // e.g., analog particle that reaches census
+            if (e_abs > 0.0) {
+              // process continuous absorption
+              Real &dejbn = vmesh(b, fj::energy_delta(), kp, jp, ip);
+              Kokkos::atomic_add(&dejbn, e_abs);
+            }
+
+            // continuous absorption with low cutoff allows particles to get to zero
+            // energy weights, kill them so they don't lead to division by zero in
+            // population control
+            if (!(ww > 0.0)) {
+              swarm_d.MarkParticleForRemoval(n);
+              break;
+            }
+
+            // Update cell of particle
             swarm_d.Xtoijk(x, y, z, ip, jp, kp);
 
             //  If particle has left this block, drop out of transport loop for comms
             bool on_current_mesh_block;
             swarm_d.GetNeighborBlockIndex(n, x, y, z, on_current_mesh_block);
             if (!on_current_mesh_block) {
-              PARTHENON_DEBUG_REQUIRE(!(is_absorbed || is_scattered),
+              PARTHENON_DEBUG_REQUIRE(!(is_scattered || is_absorbed),
                                       "Absorption/scattering event off block!");
               break;
             }
 
             if (is_absorbed) {
-              // process absorption
+              // process analog absorption or below cutoff particles
               Real &dejbn = vmesh(b, fj::energy_delta(), kp, jp, ip);
               Kokkos::atomic_add(&dejbn, ww);
               swarm_d.MarkParticleForRemoval(n);
@@ -218,6 +244,11 @@ TaskStatus TransportPhotons(MeshData<Real> *md, const Real t_start, const Real d
                   ee = hd * nu;
                 }
               }
+            }
+
+            if (is_census) {
+              // reset fraction of particles that make it census
+              ppack_r(b, ph::fraction(), n) = 1.0;
             }
           }
           rng_pool.free_state(rng_gen);
