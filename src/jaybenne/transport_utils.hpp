@@ -68,8 +68,12 @@ struct tran_step_args {
   Real &x;            // particle x/X1-coordinate
   Real &y;            // particle y/X2-coordinate
   Real &z;            // particle z/X3-coordinate
-  bool &is_absorbed;  // indicator for absorption in the step
+  Real &ww;           // energy-weight of the particle
+  Real &fraction;     // weight/initial weight of the particle
+  Real &e_abs;        // energy-weight absorbed in this step
   bool &is_scattered; // indicator for scattering in the step
+  bool &is_census;    // indicator for end of census
+  bool &is_absorbed;  // indicator for analog absorption
 };
 
 // helper struct to encapsulate DDMC step arguments
@@ -107,42 +111,84 @@ struct ddmc_step_args {
   int &ip;            // x/X1 block index
   int &jp;            // y/X2 block index
   int &kp;            // z/X3 block index
+  Real &ww;           // energy-weight of the particle
+  Real &fraction;     // weight/initial weight of the particle
+  Real &e_abs;        // energy-weight absorbed in this step
   bool &is_absorbed;  // indicator for absorption in the step
   bool &is_scattered; // indicator for scattering in the step
+  bool &is_census;    // indicator for end of census
 };
 
 KOKKOS_FORCEINLINE_FUNCTION
-void ptcl_transport_step(tran_step_args tra) {
+void ptcl_transport_step(tran_step_args tra, const double cutoff) {
 
   // use distances and convert to time after min is determined to reduce division ops
-  const Real rmin = std::numeric_limits<Real>::min();
-  const Real lam_abs = 1.0 / (tra.ff * tra.aa + rmin);
-  const Real lam_sc = 1.0 / (tra.ss + (1.0 - tra.ff) * tra.aa + rmin);
-  const Real dx_abs = -lam_abs * std::log(tra.rng_gen.drand());
-  const Real dx_sc = -lam_sc * std::log(tra.rng_gen.drand());
-  const Real dx_end = tra.vv * ((tra.t_start + tra.dt) - tra.t);
-  Real dx_push = std::min(tra.dx_push, dx_end);
-  // clang-format off
-  dx_push = ((tra.vx > 0.0) ? std::min(dx_push, tra.vv * (tra.xu - tra.x) / tra.vx) :
-            ((tra.vx < 0.0) ? std::min(dx_push, tra.vv * (tra.xl - tra.x) / tra.vx) :
-            ((dx_push))));
-  dx_push = tra.multi_d ?
-            ((tra.vy > 0.0) ? std::min(dx_push, tra.vv * (tra.yu - tra.y) / tra.vy) :
-            ((tra.vy < 0.0) ? std::min(dx_push, tra.vv * (tra.yl - tra.y) / tra.vy) :
-            ((dx_push)))) : dx_push;
-  dx_push = tra.three_d ?
-            ((tra.vz > 0.0) ? std::min(dx_push, tra.vv * (tra.zu - tra.z) / tra.vz) :
-            ((tra.vz < 0.0) ? std::min(dx_push, tra.vv * (tra.zl - tra.z) / tra.vz) :
-            ((dx_push)))) : dx_push;
-  // clang-format on
+  enum Event { BOUND, COLLISION, CENSUS };
 
-  // set collision indicators
-  tra.is_absorbed = ((dx_abs < dx_push) && (dx_abs < dx_sc));
-  tra.is_scattered = (!(tra.is_absorbed) && (dx_sc < dx_push));
+  constexpr Real rmin = std::numeric_limits<Real>::min();
+  constexpr Real rmax = std::numeric_limits<Real>::max();
+
+  // scatter
+  const Real sigma_scatter = tra.ss + (1.0 - tra.ff) * tra.aa;
+  const Real sigma_collision =
+      sigma_scatter + ((tra.fraction < cutoff) ? tra.ff * tra.aa : 0.0);
+  const Real lam_collision = 1.0 / (sigma_collision + rmin);
+  const Real dx_collision = -lam_collision * std::log(tra.rng_gen.drand());
+
+  // census
+  const Real dx_end = tra.vv * ((tra.t_start + tra.dt) - tra.t);
+
+  int face = -1;
+  Real dx_bound = rmax;
+  Real dx_push_x = (tra.vx > 0.0) ? tra.vv * (tra.xu - tra.x) / tra.vx
+                                  : tra.vv * (tra.xl - tra.x) / tra.vx;
+  Real dx_push_y = rmax;
+  if (tra.multi_d)
+    dx_push_y = (tra.vy > 0.0) ? tra.vv * (tra.yu - tra.y) / tra.vy
+                               : tra.vv * (tra.yl - tra.y) / tra.vy;
+
+  Real dx_push_z = rmax;
+  if (tra.three_d)
+    dx_push_z = (tra.vz > 0.0) ? tra.vv * (tra.zu - tra.z) / tra.vz
+                               : tra.vv * (tra.zl - tra.z) / tra.vz;
+
+  // default to x direction
+  dx_bound = dx_push_x;
+  face = (tra.vx > 0.0) ? 1 : 0;
+  // y check
+  if ((dx_push_y < dx_push_x) && (dx_push_y < dx_push_z)) {
+    dx_bound = dx_push_y;
+    face = (tra.vy > 0.0) ? 3 : 2;
+  }
+  // z check
+  if ((dx_push_z < dx_push_x) && (dx_push_z < dx_push_y)) {
+    dx_bound = dx_push_z;
+    face = (tra.vz > 0.0) ? 5 : 4;
+  }
+
+  // default to scatter
+  Real dx_push = dx_collision;
+  Event event = COLLISION;
+  tra.is_scattered = true;
+  tra.is_census = false;
+
+  // check for census
+  if (dx_end < dx_push) {
+    dx_push = dx_end;
+    event = CENSUS;
+    tra.is_scattered = false;
+    tra.is_census = true;
+  }
+  // check for bound
+  if (dx_bound < dx_push) {
+    dx_push = dx_bound;
+    event = BOUND;
+    tra.is_scattered = false;
+    tra.is_census = false;
+  }
 
   // set distance to translate particle position
-  const Real dt_push =
-      ((tra.is_absorbed) ? dx_abs : ((tra.is_scattered) ? dx_sc : dx_push)) / tra.vv;
+  const Real dt_push = dx_push / tra.vv;
 
   // push
   tra.t += dt_push;
@@ -150,27 +196,44 @@ void ptcl_transport_step(tran_step_args tra) {
   tra.y += tra.multi_d * tra.vy * dt_push;
   tra.z += tra.three_d * tra.vz * dt_push;
 
-  // push time slightly into next time step if particle is at end of time step (census)
-  const bool is_atend =
-      fuzzy_equal(tra.t, tra.t_start + tra.dt, tra.dt, eps_imc_offset());
-  tra.t = is_atend ? tra.t_start + (1.0 + eps_imc_offset()) * tra.dt : tra.t;
+  if (tra.fraction < cutoff) {
+    if (event == COLLISION && tra.rng_gen.drand() > sigma_scatter / sigma_collision) {
+      // post processing uses is_absorbed to deposit full particle energy into matieral
+      tra.is_absorbed = true;
+      tra.e_abs = 0.0;
+      tra.is_scattered = false;
+    }
+  } else {
+    // attenuate particle
+    const Real exp_factor = std::exp(-dx_push * tra.ff * tra.aa);
+    tra.e_abs = tra.ww * (1.0 - exp_factor);
+    tra.ww = tra.ww - tra.e_abs;
+    tra.fraction = tra.fraction * exp_factor;
+  }
 
-  // handle faces
-  const bool leave = !(tra.is_absorbed || tra.is_scattered);
-  const Real fdx = eps_imc_offset() * (tra.xu - tra.xl);
-  const Real fdy = eps_imc_offset() * (tra.yu - tra.yl);
-  const Real fdz = eps_imc_offset() * (tra.zu - tra.zl);
-  tra.x = (std::abs(tra.x - tra.xl) < fdx && leave) ? tra.xl - fdx : tra.x;
-  tra.x = (std::abs(tra.x - tra.xu) < fdx && leave) ? tra.xu + fdx : tra.x;
-  tra.y = (tra.multi_d && std::abs(tra.y - tra.yl) < fdy && leave) ? tra.yl - fdy : tra.y;
-  tra.y = (tra.multi_d && std::abs(tra.y - tra.yu) < fdy && leave) ? tra.yu + fdy : tra.y;
-  tra.z = (tra.three_d && std::abs(tra.z - tra.zl) < fdz && leave) ? tra.zl - fdz : tra.z;
-  tra.z = (tra.three_d && std::abs(tra.z - tra.zu) < fdz && leave) ? tra.zu + fdz : tra.z;
+  // push time slightly into next time step if particle is at end of time step (census)
+  const bool is_at_end =
+      fuzzy_equal(tra.t, tra.t_start + tra.dt, tra.dt, eps_imc_offset());
+  tra.t = is_at_end ? tra.t_start + (1.0 + eps_imc_offset()) * tra.dt : tra.t;
+
+  // handle face crossings by snapping to face and adding epsilon offset
+  if (event == BOUND) {
+    if (face == 0 || face == 1) {
+      const Real offset = eps_imc_offset() * (tra.xu - tra.xl);
+      tra.x = (face == 0) ? (tra.xl - offset) : tra.xu + offset;
+    } else if (face == 2 || face == 3) {
+      const Real offset = eps_imc_offset() * (tra.yu - tra.yl);
+      tra.y = (face == 2) ? (tra.yl - offset) : tra.yu + offset;
+    } else { // (face == 4 || face == 5) {
+      const Real offset = eps_imc_offset() * (tra.zu - tra.zl);
+      tra.z = (face == 4) ? tra.zl - offset : tra.zu + offset;
+    }
+  }
 }
 
 // TODO(RTW): add effective out-scattering from DDMC when multigroup is enabled
 KOKKOS_FORCEINLINE_FUNCTION
-void ptcl_ddmc_step(ddmc_step_args dia) {
+void ptcl_ddmc_step(ddmc_step_args dia, const double cutoff) {
 
   const Real rmin = std::numeric_limits<Real>::min();
 
@@ -189,8 +252,11 @@ void ptcl_ddmc_step(ddmc_step_args dia) {
   const Real leakz_u = dia.Pz_u / dz;
   const Real leak_tot = leakx_l + leakx_u + leaky_l + leaky_u + leakz_l + leakz_u;
 
+  // attenuate if fraction >= cutoff, analog absorb if fraction < cutoff
+  const Real an_abs = (dia.fraction < cutoff) ? dia.ff * dia.aa : 0.0;
+
   // calculate time to DDMC event and compare to time to end of time step (census)
-  const Real cdf_ddmc = dia.ff * dia.aa + leak_tot + rmin;
+  const Real cdf_ddmc = an_abs + leak_tot + rmin;
   const Real dt_ddmc = -std::log(dia.rng_gen.drand()) / (dia.vv * cdf_ddmc);
   const Real dt_end = (dia.t_start + dia.dt) - dia.t;
   const bool is_ddmc_event = dt_ddmc < dt_end;
@@ -199,22 +265,30 @@ void ptcl_ddmc_step(ddmc_step_args dia) {
   const Real dt_push = std::min(dt_ddmc, dt_end);
   dia.t += dt_push;
 
+  if (!(dia.fraction < cutoff)) {
+    // attenuate particle
+    const Real exp_factor = std::exp(-dia.vv * dt_push * dia.ff * dia.aa);
+    dia.e_abs = dia.ww * (1.0 - exp_factor);
+    dia.ww -= dia.e_abs;
+    dia.fraction *= exp_factor;
+  }
+
   if (is_ddmc_event) {
 
     // sample DDMC CDF
     const Real xi = cdf_ddmc * dia.rng_gen.drand();
 
-    if (xi < dia.ff * dia.aa) {
+    if (xi < an_abs) {
 
       // particle will be absorbed
       dia.is_absorbed = true;
 
-    } else if (xi < dia.ff * dia.aa + leak_tot) {
+    } else if (xi < an_abs + leak_tot) {
 
       // TODO(RTW): only sample direction if adjacent cell is below tau_ddmc
 
       // particle will leak to an adjacent cell
-      const Real xim = xi - dia.ff * dia.aa;
+      const Real xim = xi - an_abs;
       if (xim < leakx_l) {
         // leak in negative x/X1 direction
         dia.ip -= 1;
@@ -285,6 +359,7 @@ void ptcl_ddmc_step(ddmc_step_args dia) {
 
     // ensure time is slightly past census time (TODO: use eps_ddmc_offset?)
     dia.t = dia.t_start + (1.0 + eps_imc_offset()) * dia.dt;
+    dia.is_census = true;
   }
 }
 

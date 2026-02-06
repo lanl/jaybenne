@@ -253,6 +253,10 @@ Initialize_impl(ParameterInput *pin, EOS &eos,
   Real tau_ddmc = pin->GetOrAddReal(block_name, "tau_ddmc", 5.0);
   pkg->AddParam<>("tau_ddmc", tau_ddmc);
 
+  // parse or use defaul fractional weight cutoff (swtich to analog) of 1.0e-6
+  Real cutoff = pin->GetOrAddReal(block_name, "cutoff", 1.0e-6);
+  pkg->AddParam<>("cutoff", cutoff);
+
   // Select opacity average type to use (Planck/Rosseland)
   // if both true, then for grey runs an experimental Fleck(-Jiang) factor is used
   bool use_planck = pin->GetOrAddBoolean(block_name, "use_planck", false);
@@ -271,6 +275,8 @@ Initialize_impl(ParameterInput *pin, EOS &eos,
     PARTHENON_FAIL("Only uniform or energy source strategies supported!");
   }
   pkg->AddParam<>("source_strategy", source_strategy);
+  Real emit_temp_threshold = pin->GetOrAddReal(block_name, "emit_temp_threshold", 0.0);
+  pkg->AddParam<>("emit_temp_threshold", emit_temp_threshold);
 
   // Whether to include emission physics
   const bool do_emission = pin->GetOrAddBoolean(block_name, "do_emission", true);
@@ -289,6 +295,7 @@ Initialize_impl(ParameterInput *pin, EOS &eos,
   Metadata mreal({Metadata::Real});
   pkg->AddSwarmValue(particle::photons::time::name(), photons_swarm_name, mreal);
   pkg->AddSwarmValue(particle::photons::weight::name(), photons_swarm_name, mreal);
+  pkg->AddSwarmValue(particle::photons::fraction::name(), photons_swarm_name, mreal);
   pkg->AddSwarmValue(particle::photons::energy::name(), photons_swarm_name, mreal);
   Metadata mrealv({Metadata::Real, Metadata::Vector}, std::vector<int>{3});
   pkg->AddSwarmValue(particle::photons::v::name(), photons_swarm_name, mrealv);

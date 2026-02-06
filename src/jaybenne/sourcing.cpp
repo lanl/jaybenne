@@ -73,6 +73,7 @@ TaskStatus SourcePhotons(T *md, const Real t_start, const Real dt) {
   auto &rng_pool = jb_pkg->template Param<RngPool>("rng_pool");
   const int &num_particles = jb_pkg->template Param<int>("num_particles");
   const Real &dnpc_min = jb_pkg->template Param<Real>("dnpc_min");
+  const Real &emit_temp_th = jb_pkg->template Param<Real>("emit_temp_threshold");
   const Real &vv = jb_pkg->template Param<Real>("speed_of_light");
   const Real &sb = jb_pkg->template Param<Real>("stefan_boltzmann");
 
@@ -96,8 +97,38 @@ TaskStatus SourcePhotons(T *md, const Real t_start, const Real dt) {
   const int nx2 = jb.e - jb.s + 1;
   const int nx3 = kb.e - kb.s + 1;
   const int num_cells = nx1 * nx2 * nx3;
-  const Real npc = std::floor(static_cast<Real>(num_particles) /
-                              (num_cells * md->GetMeshPointer()->nbtotal));
+
+  Real npc = std::floor(static_cast<Real>(num_particles) /
+                        (num_cells * md->GetMeshPointer()->nbtotal));
+
+  // adjust particle number per cell up if threshold temperature is used
+  if (emit_temp_th > 0.0 && ST == SourceType::emission) {
+    // count the number of cells above the temperature threshold
+    Real ncell_abv_th = 0.0;
+    global_sum_reduce(
+        "SourcePhotons::count-emitting-cells", DevExecSpace(), nblocks, kb.s, kb.e, jb.s,
+        jb.e, ib.s, ib.e,
+        KOKKOS_LAMBDA(const int &b, const int &k, const int &j, const int &i,
+                      Real &totth) {
+          const Real &rho = vmesh(b, fjh::density(), k, j, i);
+          const Real &sie = vmesh(b, fjh::sie(), k, j, i);
+          const Real temp = eos.TemperatureFromDensityInternalEnergy(rho, sie);
+          totth += (temp > emit_temp_th ? 1.0 : 0.0);
+        },
+        ncell_abv_th, true);
+
+    PARTHENON_REQUIRE(ncell_abv_th > 0.0,
+                      "emission source but all cells below threshold temperature!");
+
+    // calculate scaling factor on number per cell
+    const Real npratio =
+        static_cast<Real>(num_cells * md->GetMeshPointer()->nbtotal) / ncell_abv_th;
+    PARTHENON_DEBUG_REQUIRE(npratio >= 1.0,
+                            "more emitting cells than total cells in problem!");
+
+    // upgrade number of particles per (emitting) cell
+    npc = std::floor(npc * npratio);
+  }
 
   ParArray1D<int> nparticles("# particles per block", nblocks);
   ParArray2D<int> prefix_sum("prefix sums per block", nblocks, num_cells);
@@ -170,10 +201,16 @@ TaskStatus SourcePhotons(T *md, const Real t_start, const Real dt) {
               // NOTE(PDM): We hardcode snpc and sewpc below, but we could imagine
               // introducing supplementary functions/tasks that set these, or even
               // giving downstream codes the opportunity to set these themselves...
-              snpc = npc;
-              dnum = std::max(std::round((snpc > actnum) * (snpc - actnum)), dnpc_min);
-              sewpc = erad / dnum;
-              ntot += static_cast<int>(dnum);
+              if (temp > emit_temp_th || ST == SourceType::thermal) {
+                snpc = npc;
+                dnum = std::max(std::round((snpc > actnum) * (snpc - actnum)), dnpc_min);
+                sewpc = erad / dnum;
+                ntot += static_cast<int>(dnum);
+              } else {
+                snpc = 0.0;
+                dnum = 0.0;
+                sewpc = 0.0;
+              }
             },
             Kokkos::Sum<int>(block_sum));
         Kokkos::single(Kokkos::PerTeam(member), [&]() { nparticles(b) = block_sum; });
@@ -204,7 +241,7 @@ TaskStatus SourcePhotons(T *md, const Real t_start, const Real dt) {
 
   static auto pdesc_r =
       MakeSwarmPackDescriptor<swarm_position::x, swarm_position::y, swarm_position::z,
-                              ph::time, ph::v, ph::energy, ph::weight>(
+                              ph::time, ph::v, ph::energy, ph::weight, ph::fraction>(
           photons_swarm_name);
   static auto pdesc_i = MakeSwarmPackDescriptor<ph::ijk>(photons_swarm_name);
   auto ppack_r = pdesc_r.GetPack(md);
@@ -250,8 +287,9 @@ TaskStatus SourcePhotons(T *md, const Real t_start, const Real dt) {
           ppack_i(b, ph::ijk(1), n) = j;
           ppack_i(b, ph::ijk(2), n) = k;
 
-          // Set energy weight
+          // Set energy weight and fraction
           ppack_r(b, ph::weight(), n) = vmesh(b, fj::source_ew_per_cell(), k, j, i);
+          ppack_r(b, ph::fraction(), n) = 1.0;
 
           // Sample position uniformly in space over cell
           // TODO(BRR) only valid for Cartesian
@@ -309,23 +347,11 @@ template TaskStatus
 SourcePhotons<MeshBlockData<Real>, SourceType::thermal, FrequencyType::gray>(
     MeshBlockData<Real> *md, const Real t0, const Real dt);
 template TaskStatus
-SourcePhotons<MeshBlockData<Real>, SourceType::emission, FrequencyType::gray>(
-    MeshBlockData<Real> *md, const Real t0, const Real dt);
-template TaskStatus
-SourcePhotons<MeshData<Real>, SourceType::thermal, FrequencyType::gray>(
-    MeshData<Real> *md, const Real t0, const Real dt);
-template TaskStatus
 SourcePhotons<MeshData<Real>, SourceType::emission, FrequencyType::gray>(
     MeshData<Real> *md, const Real t0, const Real dt);
 template TaskStatus
 SourcePhotons<MeshBlockData<Real>, SourceType::thermal, FrequencyType::multigroup>(
     MeshBlockData<Real> *md, const Real t0, const Real dt);
-template TaskStatus
-SourcePhotons<MeshBlockData<Real>, SourceType::emission, FrequencyType::multigroup>(
-    MeshBlockData<Real> *md, const Real t0, const Real dt);
-template TaskStatus
-SourcePhotons<MeshData<Real>, SourceType::thermal, FrequencyType::multigroup>(
-    MeshData<Real> *md, const Real t0, const Real dt);
 template TaskStatus
 SourcePhotons<MeshData<Real>, SourceType::emission, FrequencyType::multigroup>(
     MeshData<Real> *md, const Real t0, const Real dt);
