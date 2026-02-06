@@ -178,13 +178,14 @@ TaskStatus TransportPhotons_DDMC(MeshData<Real> *md, const Real t_start, const R
                                   Px_l, Py_l, Pz_l, Px_u, Py_u, Pz_u,
                                   // updated by push
                                   t, x, y, z, vx, vy, vz,
-                                  ip, jp, kp, is_absorbed, is_scattered, is_census};
+                                  ip, jp, kp, ww, fraction, e_abs,
+                                  is_absorbed, is_scattered, is_census};
               // clang-format on
 
               // check for IMC-DDMC albedo rejection if particle arrived from IMC region
               if (SQR(vx) + SQR(vy) + SQR(vz) > ske) ptcl_ddmc_albedo(dia, is_rejected);
 
-              if (!is_rejected) ptcl_ddmc_step(dia);
+              if (!is_rejected) ptcl_ddmc_step(dia, cutoff);
 
             } else {
 
@@ -198,7 +199,8 @@ TaskStatus TransportPhotons_DDMC(MeshData<Real> *md, const Real t_start, const R
                                   dx_push, multi_d, three_d,
                                   xl, yl, zl, xu, yu, zu,
                                   // updated by push
-                                  t, x, y, z, ww, fraction, e_abs, is_scattered, is_census, is_absorbed};
+                                  t, x, y, z, ww, fraction, e_abs,
+                                  is_scattered, is_census, is_absorbed};
 
               // if v==0, particle is from a DDMC cell in another block at <= refinement
               if (SQR(vx) + SQR(vy) + SQR(vz) < 2.0 * eps * ske) ptcl_ddmc_to_imc(tra);
@@ -212,7 +214,6 @@ TaskStatus TransportPhotons_DDMC(MeshData<Real> *md, const Real t_start, const R
             // don't do an atomic if particle is not absorbed and deposits no energy
             // e.g., analog particle that reaches census or analog DDMC particle
             // exiting DDMC region
-
             if (e_abs > 0.0) {
               // process continuous absorption
               Real &dejbn = vmesh(b, fj::energy_delta(), kp, jp, ip);
@@ -223,7 +224,6 @@ TaskStatus TransportPhotons_DDMC(MeshData<Real> *md, const Real t_start, const R
             // energy weights, kill them so they don't lead to division by zero in
             // population control
             if (!(ww > 0.0)) {
-              // std::cout<<"zero weight particle hit killed block"<<std::endl;
               swarm_d.MarkParticleForRemoval(n);
               break;
             }

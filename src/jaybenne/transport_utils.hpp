@@ -111,6 +111,9 @@ struct ddmc_step_args {
   int &ip;            // x/X1 block index
   int &jp;            // y/X2 block index
   int &kp;            // z/X3 block index
+  Real &ww;           // energy-weight of the particle
+  Real &fraction;     // weight/initial weight of the particle
+  Real &e_abs;        // energy-weight absorbed in this step
   bool &is_absorbed;  // indicator for absorption in the step
   bool &is_scattered; // indicator for scattering in the step
   bool &is_census;    // indicator for end of census
@@ -202,7 +205,7 @@ void ptcl_transport_step(tran_step_args tra, const double cutoff) {
     }
   } else {
     // attenuate particle
-    const Real exp_factor = exp(-dx_push * tra.ff * tra.aa);
+    const Real exp_factor = std::exp(-dx_push * tra.ff * tra.aa);
     tra.e_abs = tra.ww * (1.0 - exp_factor);
     tra.ww = tra.ww - tra.e_abs;
     tra.fraction = tra.fraction * exp_factor;
@@ -230,7 +233,7 @@ void ptcl_transport_step(tran_step_args tra, const double cutoff) {
 
 // TODO(RTW): add effective out-scattering from DDMC when multigroup is enabled
 KOKKOS_FORCEINLINE_FUNCTION
-void ptcl_ddmc_step(ddmc_step_args dia) {
+void ptcl_ddmc_step(ddmc_step_args dia, const double cutoff) {
 
   const Real rmin = std::numeric_limits<Real>::min();
 
@@ -249,8 +252,11 @@ void ptcl_ddmc_step(ddmc_step_args dia) {
   const Real leakz_u = dia.Pz_u / dz;
   const Real leak_tot = leakx_l + leakx_u + leaky_l + leaky_u + leakz_l + leakz_u;
 
+  // attenuate if fraction >= cutoff, analog absorb if fraction < cutoff
+  const Real an_abs = (dia.fraction < cutoff) ? dia.ff * dia.aa : 0.0;
+
   // calculate time to DDMC event and compare to time to end of time step (census)
-  const Real cdf_ddmc = dia.ff * dia.aa + leak_tot + rmin;
+  const Real cdf_ddmc = an_abs + leak_tot + rmin;
   const Real dt_ddmc = -std::log(dia.rng_gen.drand()) / (dia.vv * cdf_ddmc);
   const Real dt_end = (dia.t_start + dia.dt) - dia.t;
   const bool is_ddmc_event = dt_ddmc < dt_end;
@@ -259,22 +265,30 @@ void ptcl_ddmc_step(ddmc_step_args dia) {
   const Real dt_push = std::min(dt_ddmc, dt_end);
   dia.t += dt_push;
 
+  if (!(dia.fraction < cutoff)) {
+    // attenuate particle
+    const Real exp_factor = std::exp(-dia.vv * dt_push * dia.ff * dia.aa);
+    dia.e_abs = dia.ww * (1.0 - exp_factor);
+    dia.ww -= dia.e_abs;
+    dia.fraction *= exp_factor;
+  }
+
   if (is_ddmc_event) {
 
     // sample DDMC CDF
     const Real xi = cdf_ddmc * dia.rng_gen.drand();
 
-    if (xi < dia.ff * dia.aa) {
+    if (xi < an_abs) {
 
       // particle will be absorbed
       dia.is_absorbed = true;
 
-    } else if (xi < dia.ff * dia.aa + leak_tot) {
+    } else if (xi < an_abs + leak_tot) {
 
       // TODO(RTW): only sample direction if adjacent cell is below tau_ddmc
 
       // particle will leak to an adjacent cell
-      const Real xim = xi - dia.ff * dia.aa;
+      const Real xim = xi - an_abs;
       if (xim < leakx_l) {
         // leak in negative x/X1 direction
         dia.ip -= 1;
