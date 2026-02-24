@@ -482,7 +482,7 @@ TaskStatus UpdateDerivedTransportFieldsImpl(MeshData<Real> *md, const Real dt) {
             // calculate modified fleck factor using Planck and Rosseland
             const Real ross = mopac.AbsorptionCoefficient(rho, temp, Rosseland);
             const Real plnk = mopac.AbsorptionCoefficient(rho, temp, Planck);
-            const Real f = vmesh(b, fj::fleck_factor(), k, j, i);
+            const Real &f = vmesh(b, fj::fleck_factor(), k, j, i);
             const Real fj = ross > 0.0 ? f * plnk / ross : f;
 
             // use factor (fj) only if <= 1 (ensure non-zero effective scattering)
