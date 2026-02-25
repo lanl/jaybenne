@@ -214,6 +214,9 @@ std::shared_ptr<StateDescriptor> Initialize(ParameterInput *pin) {
 void ProblemGenerator(MeshBlock *pmb, ParameterInput *pin) {
   PARTHENON_INSTRUMENT
   namespace fm = field::material;
+  using singularity::photons::OpacityAveraging;
+  using singularity::photons::Planck;
+  using singularity::photons::Rosseland;
 
   auto mbd = pmb->meshblock_data.Get().get();
   auto &resolved_pkgs = pmb->resolved_packages;
@@ -272,6 +275,13 @@ void ProblemGenerator(MeshBlock *pmb, ParameterInput *pin) {
 
   // initialize opacity (TODO: only gray for now)
   if (frequency_type == FrequencyType::gray) {
+
+    // get opacity average indicators
+    const auto &use_planck = jbn->template Param<bool>("use_planck");
+    const auto &use_rosseland = jbn->template Param<bool>("use_rosseland");
+    // set opacity mode for grey opacity
+    const OpacityAveraging gmode = (use_planck && !use_rosseland) ? Planck : Rosseland;
+
     parthenon::par_for(
         DEFAULT_LOOP_PATTERN, "Initialize opacity", parthenon::DevExecSpace(), 0,
         nblocks - 1, kb.s, kb.e, jb.s, jb.e, ib.s, ib.e,
@@ -279,7 +289,7 @@ void ProblemGenerator(MeshBlock *pmb, ParameterInput *pin) {
           const Real &rho = vmesh(b, fm::density(), k, j, i);
           const Real &sie = vmesh(b, fm::sie(), k, j, i);
           const Real temp = eos.TemperatureFromDensityInternalEnergy(rho, sie);
-          const Real aa = mopacity.AbsorptionCoefficient(rho, temp);
+          const Real aa = mopacity.AbsorptionCoefficient(rho, temp, gmode);
           const Real ss = mscattering.RosselandMeanTotalScatteringCoefficient(rho, temp);
           vmesh(b, fm::absorption_opacity(), k, j, i) = aa;
           vmesh(b, fm::scattering_opacity(), k, j, i) = ss;

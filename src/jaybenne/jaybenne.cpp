@@ -257,6 +257,13 @@ Initialize_impl(ParameterInput *pin, EOS &eos,
   Real cutoff = pin->GetOrAddReal(block_name, "cutoff", 1.0e-6);
   pkg->AddParam<>("cutoff", cutoff);
 
+  // Select opacity average type to use (Planck/Rosseland)
+  // if both true, then for grey runs an experimental Fleck(-Jiang) factor is used
+  bool use_planck = pin->GetOrAddBoolean(block_name, "use_planck", false);
+  pkg->AddParam<>("use_planck", use_planck);
+  bool use_rosseland = pin->GetOrAddBoolean(block_name, "use_rosseland", true);
+  pkg->AddParam<>("use_rosseland", use_rosseland);
+
   // Sourcing strategy
   SourceStrategy source_strategy;
   std::string strategy = pin->GetOrAddString(block_name, "source_strategy", "uniform");
@@ -410,6 +417,9 @@ TaskStatus UpdateDerivedTransportFieldsImpl(MeshData<Real> *md, const Real dt) {
   PARTHENON_INSTRUMENT
   namespace fj = field::jaybenne;
   namespace fjh = field::jaybenne::host;
+  using singularity::photons::OpacityAveraging;
+  using singularity::photons::Planck;
+  using singularity::photons::Rosseland;
 
   auto pm = md->GetParentPointer();
   auto &resolved_pkgs = pm->resolved_packages;
@@ -419,10 +429,19 @@ TaskStatus UpdateDerivedTransportFieldsImpl(MeshData<Real> *md, const Real dt) {
   Scattering scattering;
   MeanOpacity mopacity;
   MeanScattering mscattering;
+
+  // get opacity average indicators
+  const auto &use_planck = jbn->template Param<bool>("use_planck");
+  const auto &use_rosseland = jbn->template Param<bool>("use_rosseland");
+  // set opacity mode for emissivity used in Fleck factor
+  const OpacityAveraging gmode = use_planck ? Planck : Rosseland;
+
   if constexpr (FT == FrequencyType::gray) {
     mopacity = jbn->template Param<MeanOpacity>("mopacity_d");
     mscattering = jbn->template Param<MeanScattering>("mscattering_d");
   } else if constexpr (FT == FrequencyType::multigroup) {
+    PARTHENON_REQUIRE(!(use_planck && use_rosseland),
+                      "Modified Fleck factor is not compatible with multigroup!");
     opacity = jbn->template Param<Opacity>("opacity_d");
     scattering = jbn->template Param<Scattering>("scattering_d");
   }
@@ -446,15 +465,31 @@ TaskStatus UpdateDerivedTransportFieldsImpl(MeshData<Real> *md, const Real dt) {
         const Real temp = eos.TemperatureFromDensityInternalEnergy(rho, sie);
         const Real cv = eos.SpecificHeatFromDensityInternalEnergy(rho, sie);
         Real emis = JaybenneNull<Real>();
+        [[maybe_unused]] const auto gmoded = gmode;
         [[maybe_unused]] auto mopac = mopacity;
         [[maybe_unused]] auto opac = opacity;
         if constexpr (FT == FrequencyType::gray) {
-          emis = mopac.Emissivity(rho, temp);
+          emis = mopac.Emissivity(rho, temp, gmoded);
         } else if constexpr (FT == FrequencyType::multigroup) {
           emis = opac.Emissivity(rho, temp);
         }
         vmesh(b, fj::fleck_factor(), k, j, i) =
             1.0 / (1.0 + (4.0 * emis / (rho * cv * temp)) * dt);
+
+        // check if alternate time-linearization is possible in this cell
+        if constexpr (FT == FrequencyType::gray) {
+          if (use_planck && use_rosseland) {
+            // calculate modified fleck factor using Planck and Rosseland
+            const Real ross = mopac.AbsorptionCoefficient(rho, temp, Rosseland);
+            const Real plnk = mopac.AbsorptionCoefficient(rho, temp, Planck);
+            const Real &f = vmesh(b, fj::fleck_factor(), k, j, i);
+            const Real fj = ross > 0.0 ? f * plnk / ross : f;
+
+            // use factor (fj) only if <= 1 (ensure non-zero effective scattering)
+            // if fj > 0, the original Fleck factor still has used Planck (gmode)
+            vmesh(b, fj::fleck_factor(), k, j, i) = fj <= 1.0 ? fj : f;
+          }
+        }
       });
 
   // if DDMC active, calculate symmetric (geom. invariant) portion of face probs
@@ -462,6 +497,9 @@ TaskStatus UpdateDerivedTransportFieldsImpl(MeshData<Real> *md, const Real dt) {
   if (use_ddmc) {
 
     PARTHENON_REQUIRE(FT == FrequencyType::gray, "DDMC only works in gray!");
+
+    // use Planck for all-Planck mode in leakage coefficients too
+    const OpacityAveraging gmode2 = (use_planck && !use_rosseland) ? Planck : Rosseland;
 
     // define extrapolation distance (Habetler & Matkowski 1975)
     constexpr Real lam_ext = 0.7104;
@@ -507,15 +545,16 @@ TaskStatus UpdateDerivedTransportFieldsImpl(MeshData<Real> *md, const Real dt) {
           Real aa_l = JaybenneNull<Real>();
           Real ss_u = JaybenneNull<Real>();
           Real aa_u = JaybenneNull<Real>();
+          [[maybe_unused]] const auto gmode2d = gmode2;
           [[maybe_unused]] auto mopac = mopacity;
           [[maybe_unused]] auto mscatter = mscattering;
           [[maybe_unused]] auto opac = opacity;
           [[maybe_unused]] auto scatter = scattering;
           if constexpr (FT == FrequencyType::gray) {
             ss_l = mscatter.RosselandMeanTotalScatteringCoefficient(rho_l, temp_l);
-            aa_l = mopac.RosselandMeanAbsorptionCoefficient(rho_l, temp_l);
+            aa_l = mopac.AbsorptionCoefficient(rho_l, temp_l, gmode2d);
             ss_u = mscatter.RosselandMeanTotalScatteringCoefficient(rho_u, temp_u);
-            aa_u = mopac.RosselandMeanAbsorptionCoefficient(rho_u, temp_u);
+            aa_u = mopac.AbsorptionCoefficient(rho_u, temp_u, gmode2d);
           } else if constexpr (FT == FrequencyType::multigroup) {
             // TODO: replace 3rd argument when this routine operates in multigroup
             ss_l = scatter.TotalScatteringCoefficient(rho_l, temp_l, 1.0);
@@ -573,15 +612,16 @@ TaskStatus UpdateDerivedTransportFieldsImpl(MeshData<Real> *md, const Real dt) {
             Real aa_l = JaybenneNull<Real>();
             Real ss_u = JaybenneNull<Real>();
             Real aa_u = JaybenneNull<Real>();
+            [[maybe_unused]] const auto gmode2d = gmode2;
             [[maybe_unused]] auto mopac = mopacity;
             [[maybe_unused]] auto mscatter = mscattering;
             [[maybe_unused]] auto opac = opacity;
             [[maybe_unused]] auto scatter = scattering;
             if constexpr (FT == FrequencyType::gray) {
               ss_l = mscatter.RosselandMeanTotalScatteringCoefficient(rho_l, temp_l);
-              aa_l = mopac.RosselandMeanAbsorptionCoefficient(rho_l, temp_l);
+              aa_l = mopac.AbsorptionCoefficient(rho_l, temp_l, gmode2d);
               ss_u = mscatter.RosselandMeanTotalScatteringCoefficient(rho_u, temp_u);
-              aa_u = mopac.RosselandMeanAbsorptionCoefficient(rho_u, temp_u);
+              aa_u = mopac.AbsorptionCoefficient(rho_u, temp_u, gmode2d);
             } else if constexpr (FT == FrequencyType::multigroup) {
               // TODO: replace 3rd argument when this routine operates in multigroup
               ss_l = scatter.TotalScatteringCoefficient(rho_l, temp_l, 1.0);
@@ -641,15 +681,16 @@ TaskStatus UpdateDerivedTransportFieldsImpl(MeshData<Real> *md, const Real dt) {
             Real aa_l = JaybenneNull<Real>();
             Real ss_u = JaybenneNull<Real>();
             Real aa_u = JaybenneNull<Real>();
+            [[maybe_unused]] const auto gmode2d = gmode2;
             [[maybe_unused]] auto mopac = mopacity;
             [[maybe_unused]] auto mscatter = mscattering;
             [[maybe_unused]] auto opac = opacity;
             [[maybe_unused]] auto scatter = scattering;
             if constexpr (FT == FrequencyType::gray) {
               ss_l = mscatter.RosselandMeanTotalScatteringCoefficient(rho_l, temp_l);
-              aa_l = mopac.RosselandMeanAbsorptionCoefficient(rho_l, temp_l);
+              aa_l = mopac.AbsorptionCoefficient(rho_l, temp_l, gmode2d);
               ss_u = mscatter.RosselandMeanTotalScatteringCoefficient(rho_u, temp_u);
-              aa_u = mopac.RosselandMeanAbsorptionCoefficient(rho_u, temp_u);
+              aa_u = mopac.AbsorptionCoefficient(rho_u, temp_u, gmode2d);
             } else if constexpr (FT == FrequencyType::multigroup) {
               // TODO: replace 3rd argument when this routine operates in multigroup
               ss_l = scatter.TotalScatteringCoefficient(rho_l, temp_l, 1.0);
@@ -704,7 +745,6 @@ TaskStatus UpdateDerivedTransportFields(MeshData<Real> *md, const Real dt) {
 TaskStatus DefragParticles(MeshData<Real> *md) {
   PARTHENON_INSTRUMENT
   auto pm = md->GetParentPointer();
-  auto &resolved_pkgs = pm->resolved_packages;
   auto &jbn = pm->packages.Get("jaybenne");
   auto &min_swarm_occupancy = jbn->template Param<Real>("min_swarm_occupancy");
   const int nblocks = md->NumBlocks();
