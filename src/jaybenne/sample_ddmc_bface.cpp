@@ -100,7 +100,8 @@ TaskStatus SampleDDMCBlockFace(MeshData<Real> *md) {
   const bool three_d = (pm->ndim > 2);
 
   // Create SparsePack
-  static auto desc = MakePackDescriptor<fj::ddmc_face_prob>(resolved_pkgs.get());
+  static auto desc = MakePackDescriptor<fj::ddmc_lo_face_prob, fj::ddmc_hi_face_prob>(
+      resolved_pkgs.get());
   auto vmesh = desc.GetPack(md);
 
   // set tolerance for checking particle coordinate
@@ -184,9 +185,13 @@ TaskStatus SampleDDMCBlockFace(MeshData<Real> *md) {
 
                   // get face probabilities for bounding faces
                   const Real &Px_uy =
-                      vmesh(b, TE::F1, fj::ddmc_face_prob(), kp, jp_u, ip_b);
+                      at_block_x_min
+                          ? vmesh(b, TE::F1, fj::ddmc_hi_face_prob(), kp, jp_u, ip_b)
+                          : vmesh(b, TE::F1, fj::ddmc_lo_face_prob(), kp, jp_u, ip_b);
                   const Real &Px_ly =
-                      vmesh(b, TE::F1, fj::ddmc_face_prob(), kp, jp_l, ip_b);
+                      at_block_x_min
+                          ? vmesh(b, TE::F1, fj::ddmc_hi_face_prob(), kp, jp_l, ip_b)
+                          : vmesh(b, TE::F1, fj::ddmc_lo_face_prob(), kp, jp_l, ip_b);
 
                   SampleFace2D(jp_l, dy_j, Px_ly, Px_uy, rng_gen, jp, y);
                 }
@@ -213,9 +218,13 @@ TaskStatus SampleDDMCBlockFace(MeshData<Real> *md) {
 
                   // get face probabilities for bounding faces
                   const Real &Py_ux =
-                      vmesh(b, TE::F2, fj::ddmc_face_prob(), kp, jp_b, ip_u);
+                      at_block_y_min
+                          ? vmesh(b, TE::F2, fj::ddmc_hi_face_prob(), kp, jp_b, ip_u)
+                          : vmesh(b, TE::F2, fj::ddmc_lo_face_prob(), kp, jp_b, ip_u);
                   const Real &Py_lx =
-                      vmesh(b, TE::F2, fj::ddmc_face_prob(), kp, jp_b, ip_l);
+                      at_block_y_min
+                          ? vmesh(b, TE::F2, fj::ddmc_hi_face_prob(), kp, jp_b, ip_l)
+                          : vmesh(b, TE::F2, fj::ddmc_lo_face_prob(), kp, jp_b, ip_l);
 
                   SampleFace2D(ip_l, dx_i, Py_lx, Py_ux, rng_gen, ip, x);
                 }
@@ -311,13 +320,21 @@ TaskStatus SampleDDMCBlockFace(MeshData<Real> *md) {
 
                   // get face probabilities for bounding faces
                   const Real &Px_uu =
-                      vmesh(b, TE::F1, fj::ddmc_face_prob(), kp_u, jp_u, ip_b);
+                      at_block_x_min
+                          ? vmesh(b, TE::F1, fj::ddmc_hi_face_prob(), kp_u, jp_u, ip_b)
+                          : vmesh(b, TE::F1, fj::ddmc_lo_face_prob(), kp_u, jp_u, ip_b);
                   const Real &Px_ul =
-                      vmesh(b, TE::F1, fj::ddmc_face_prob(), kp_u, jp_l, ip_b);
+                      at_block_x_min
+                          ? vmesh(b, TE::F1, fj::ddmc_hi_face_prob(), kp_u, jp_l, ip_b)
+                          : vmesh(b, TE::F1, fj::ddmc_lo_face_prob(), kp_u, jp_l, ip_b);
                   const Real &Px_lu =
-                      vmesh(b, TE::F1, fj::ddmc_face_prob(), kp_l, jp_u, ip_b);
+                      at_block_x_min
+                          ? vmesh(b, TE::F1, fj::ddmc_hi_face_prob(), kp_l, jp_u, ip_b)
+                          : vmesh(b, TE::F1, fj::ddmc_lo_face_prob(), kp_l, jp_u, ip_b);
                   const Real &Px_ll =
-                      vmesh(b, TE::F1, fj::ddmc_face_prob(), kp_l, jp_l, ip_b);
+                      at_block_x_min
+                          ? vmesh(b, TE::F1, fj::ddmc_hi_face_prob(), kp_l, jp_l, ip_b)
+                          : vmesh(b, TE::F1, fj::ddmc_lo_face_prob(), kp_l, jp_l, ip_b);
 
                   // sample a refined yz-face
                   SampleFace3D(jp_l, kp_l, dy_j, dz_k, Px_ll, Px_lu, Px_ul, Px_uu,
@@ -350,13 +367,21 @@ TaskStatus SampleDDMCBlockFace(MeshData<Real> *md) {
 
                   // get face probabilities for bounding faces
                   const Real &Py_uu =
-                      vmesh(b, TE::F2, fj::ddmc_face_prob(), kp_u, jp_b, ip_u);
+                      at_block_y_min
+                          ? vmesh(b, TE::F2, fj::ddmc_hi_face_prob(), kp_u, jp_b, ip_u)
+                          : vmesh(b, TE::F2, fj::ddmc_lo_face_prob(), kp_u, jp_b, ip_u);
                   const Real &Py_ul =
-                      vmesh(b, TE::F2, fj::ddmc_face_prob(), kp_u, jp_b, ip_l);
+                      at_block_y_min
+                          ? vmesh(b, TE::F2, fj::ddmc_hi_face_prob(), kp_u, jp_b, ip_l)
+                          : vmesh(b, TE::F2, fj::ddmc_lo_face_prob(), kp_u, jp_b, ip_l);
                   const Real &Py_lu =
-                      vmesh(b, TE::F2, fj::ddmc_face_prob(), kp_l, jp_b, ip_u);
+                      at_block_y_min
+                          ? vmesh(b, TE::F2, fj::ddmc_hi_face_prob(), kp_l, jp_b, ip_u)
+                          : vmesh(b, TE::F2, fj::ddmc_lo_face_prob(), kp_l, jp_b, ip_u);
                   const Real &Py_ll =
-                      vmesh(b, TE::F2, fj::ddmc_face_prob(), kp_l, jp_b, ip_l);
+                      at_block_y_min
+                          ? vmesh(b, TE::F2, fj::ddmc_hi_face_prob(), kp_l, jp_b, ip_l)
+                          : vmesh(b, TE::F2, fj::ddmc_lo_face_prob(), kp_l, jp_b, ip_l);
 
                   // sample a refined zx-face
                   SampleFace3D(ip_l, kp_l, dx_i, dz_k, Py_ll, Py_lu, Py_ul, Py_uu,
@@ -389,13 +414,21 @@ TaskStatus SampleDDMCBlockFace(MeshData<Real> *md) {
 
                   // get face probabilities for bounding faces
                   const Real &Pz_uu =
-                      vmesh(b, TE::F3, fj::ddmc_face_prob(), kp_b, jp_u, ip_u);
+                      at_block_z_min
+                          ? vmesh(b, TE::F3, fj::ddmc_hi_face_prob(), kp_b, jp_u, ip_u)
+                          : vmesh(b, TE::F3, fj::ddmc_lo_face_prob(), kp_b, jp_u, ip_u);
                   const Real &Pz_ul =
-                      vmesh(b, TE::F3, fj::ddmc_face_prob(), kp_b, jp_u, ip_l);
+                      at_block_z_min
+                          ? vmesh(b, TE::F3, fj::ddmc_hi_face_prob(), kp_b, jp_u, ip_l)
+                          : vmesh(b, TE::F3, fj::ddmc_lo_face_prob(), kp_b, jp_u, ip_l);
                   const Real &Pz_lu =
-                      vmesh(b, TE::F3, fj::ddmc_face_prob(), kp_b, jp_l, ip_u);
+                      at_block_z_min
+                          ? vmesh(b, TE::F3, fj::ddmc_hi_face_prob(), kp_b, jp_l, ip_u)
+                          : vmesh(b, TE::F3, fj::ddmc_lo_face_prob(), kp_b, jp_l, ip_u);
                   const Real &Pz_ll =
-                      vmesh(b, TE::F3, fj::ddmc_face_prob(), kp_b, jp_l, ip_l);
+                      at_block_z_min
+                          ? vmesh(b, TE::F3, fj::ddmc_hi_face_prob(), kp_b, jp_l, ip_l)
+                          : vmesh(b, TE::F3, fj::ddmc_lo_face_prob(), kp_b, jp_l, ip_l);
 
                   // sample a refined xy-face
                   SampleFace3D(ip_l, jp_l, dx_i, dy_j, Pz_ll, Pz_lu, Pz_ul, Pz_uu,

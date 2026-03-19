@@ -72,7 +72,6 @@ std::shared_ptr<StateDescriptor> Initialize(ParameterInput *pin) {
 
   // opacity fields
   m = Metadata({Metadata::Cell, Metadata::Derived, Metadata::OneCopy});
-  // TODO: maybe worth filling ghosts for expedited DDMC stencil
   pkg->AddField(field::material::absorption_opacity::name(), m);
   pkg->AddField(field::material::scattering_opacity::name(), m);
 

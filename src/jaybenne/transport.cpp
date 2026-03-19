@@ -150,7 +150,6 @@ TaskStatus TransportPhotons(MeshData<Real> *md, const Real t_start, const Real d
             [[maybe_unused]] auto scatter = scattering;
             [[maybe_unused]] auto eost = eos;
             if constexpr (FT == FrequencyType::gray) {
-              // TODO: use TotalScatteringCoefficient(rho, temp), when available
               ss = vmesh(b, fjh::scattering_opacity(), kp, jp, ip);
               aa = vmesh(b, fjh::absorption_opacity(), kp, jp, ip);
             } else if constexpr (FT == FrequencyType::multigroup) {
@@ -221,28 +220,27 @@ TaskStatus TransportPhotons(MeshData<Real> *md, const Real t_start, const Real d
             }
 
             if (is_scattered) {
-              // process scattering
-              // TODO(BRR): template on scattering model
-              ScatterKernel(rng_gen, vv, vx, vy, vz);
 
-              // if multigroup eff scatter, redistribute frequency
-              if constexpr (FT == FrequencyType::multigroup) {
-                // sample whether effective scattering occurred
-                const Real rand1 = rng_gen.drand();
-                if (rand1 * ((1.0 - ff) * aa + ss) < (1.0 - ff) * aa) {
+              // form particle scattering argument struct
+              ptcl_scat_args psa{rng_gen, vv, vx, vy, vz, ee};
 
-                  // Sample energy from CDF
-                  const Real rand2 = rng_gen.drand();
-                  int n;
-                  for (n = 0; n < n_nubinsd; n++) {
-                    if (vmesh(b, fj::emission_cdf(n), kp, jp, ip) >= rand2) {
-                      break;
-                    }
-                  }
-                  const Real dlnu = (std::log(numaxd) - std::log(numind)) / n_nubinsd;
-                  const Real nu = numind * std::exp((n + 0.5) * dlnu);
-                  ee = hd * nu;
-                }
+              if constexpr (FT == FrequencyType::gray) {
+
+                // just do direction-sampling
+                sample_vol_iso_dir(psa);
+
+                // if multigroup eff scatter, redistribute frequency
+              } else if constexpr (FT == FrequencyType::multigroup) {
+
+                // form cell scattering argument struct
+                // clang-format off
+                cell_scat_args csa{b, ip, jp, kp,
+                                   ff, aa, ss,
+                                   n_nubinsd, numind, numaxd, hd};
+                // clang-format on
+
+                // invoke frequency-dependent scattering kernel
+                scatter_kernel(vmesh, csa, psa);
               }
             }
 

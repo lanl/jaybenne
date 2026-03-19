@@ -85,6 +85,7 @@ struct ddmc_step_args {
   const Real &ff;      // Fleck factor
   const Real &aa;      // absorption opacity (1/length)
   const Real &ss;      // scattering opacity (1/length)
+  const Real &gm;      // out-scatter probability (unitless)
   const Real &vv;      // particle speed (should be c)
   const bool &multi_d; // 2D or 3D
   const bool &three_d; // 3D
@@ -255,8 +256,11 @@ void ptcl_ddmc_step(ddmc_step_args dia, const double cutoff) {
   // attenuate if fraction >= cutoff, analog absorb if fraction < cutoff
   const Real an_abs = (dia.fraction < cutoff) ? dia.ff * dia.aa : 0.0;
 
+  // effective out-scatter probability (gm=0 for grey DDMC)
+  const Real sct_out = dia.gm * (1.0 - dia.ff) * dia.aa;
+
   // calculate time to DDMC event and compare to time to end of time step (census)
-  const Real cdf_ddmc = an_abs + leak_tot + rmin;
+  const Real cdf_ddmc = an_abs + sct_out + leak_tot + rmin;
   const Real dt_ddmc = -std::log(dia.rng_gen.drand()) / (dia.vv * cdf_ddmc);
   const Real dt_end = (dia.t_start + dia.dt) - dia.t;
   const bool is_ddmc_event = dt_ddmc < dt_end;
@@ -283,7 +287,12 @@ void ptcl_ddmc_step(ddmc_step_args dia, const double cutoff) {
       // particle will be absorbed
       dia.is_absorbed = true;
 
-    } else if (xi < an_abs + leak_tot) {
+    } else if (xi < an_abs + sct_out) {
+
+      // particle will be scattered into an IMC group
+      dia.is_scattered = true;
+
+    } else if (xi < an_abs + sct_out + leak_tot) {
 
       // TODO(RTW): only sample direction if adjacent cell is below tau_ddmc
 

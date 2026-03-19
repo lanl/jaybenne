@@ -19,6 +19,20 @@
 namespace jaybenne {
 
 //----------------------------------------------------------------------------------------
+//! \fn Midpoint Rule Planck integral, returning unnormalized non-dimensional value
+//! \brief Note the arguments must be in the same units (code temperature units).
+//!        The onus is on the calling routine(s) to normalize or dimensionalize if needed.
+//!        Since the midpoint is provided, this could be made 1st-order as well
+//!        (left/right)
+KOKKOS_FORCEINLINE_FUNCTION
+Real midpoint_Planck(const Real &temp, const Real &nu, const Real &dnu) {
+  const Real tinv = 1.0 / temp;
+  const Real x = nu * tinv;
+  const Real efac = std::exp(-x);
+  return (dnu * tinv) * (x * x * x) * efac / (1.0 - efac);
+}
+
+//----------------------------------------------------------------------------------------
 //! \fn Real sample_Planck_energy
 //! \brief Efficiently samples the Planck distribution for particle energy
 //!        rng_gen: RNG pool

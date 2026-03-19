@@ -15,6 +15,7 @@
 #include <utils/robust.hpp>
 
 // Jaybenne includes
+#include "ddmc_mg_utils.hpp"
 #include "jaybenne.hpp"
 #include "jaybenne_utils.hpp"
 #include "scattering.hpp"
@@ -34,20 +35,40 @@ TaskStatus TransportPhotons_DDMC(MeshData<Real> *md, const Real t_start, const R
   namespace ph = particle::photons;
   using TE = parthenon::TopologicalElement;
 
-  PARTHENON_REQUIRE(FT == FrequencyType::gray, "DDMC only works in gray!");
-
   auto pm = md->GetParentPointer();
   auto &resolved_pkgs = pm->resolved_packages;
   auto &jb_pkg = pm->packages.Get("jaybenne");
+  auto &eos = jb_pkg->template Param<EOS>("eos_d");
   auto &rng_pool = jb_pkg->template Param<RngPool>("rng_pool");
   const Real vv = jb_pkg->template Param<Real>("speed_of_light");
   const Real ske = 0.5 * SQR(vv);
   const Real &tau_ddmc = jb_pkg->template Param<Real>("tau_ddmc");
   const Real cutoff = jb_pkg->template Param<Real>("cutoff");
 
+  // data needed for multigroup frequency sampling
+  const Real h = jb_pkg->template Param<Real>("planck_constant");
+  const Real sb = jb_pkg->template Param<Real>("stefan_boltzmann");
+  int n_nubins = JaybenneNull<int>();
+  Real numin = JaybenneNull<Real>();
+  Real numax = JaybenneNull<Real>();
+  Real dlnu = JaybenneNull<Real>();
+  Opacity opacity;
+  Scattering scattering;
+  if constexpr (FT == FrequencyType::multigroup) {
+    n_nubins = jb_pkg->template Param<int>("n_nubins");
+    numin = jb_pkg->template Param<Real>("numin");
+    numax = jb_pkg->template Param<Real>("numax");
+    // initialize (assumed) log spacing
+    dlnu = (std::log(numax) - std::log(numin)) / n_nubins;
+    // set opacity objects
+    opacity = jb_pkg->template Param<Opacity>("opacity_d");
+    scattering = jb_pkg->template Param<Scattering>("scattering_d");
+  }
+
   // Create SparsePack
   static auto desc =
-      MakePackDescriptor<fj::fleck_factor, fj::ddmc_face_prob, fj::energy_delta,
+      MakePackDescriptor<fjh::density, fjh::sie, fj::emission_cdf, fj::fleck_factor,
+                         fj::ddmc_lo_face_prob, fj::ddmc_hi_face_prob, fj::energy_delta,
                          fjh::absorption_opacity, fjh::scattering_opacity>(
           resolved_pkgs.get());
   auto vmesh = desc.GetPack(md);
@@ -81,6 +102,15 @@ TaskStatus TransportPhotons_DDMC(MeshData<Real> *md, const Real t_start, const R
         const auto &swarm_d = ppack_r.GetContext(b);
         if (swarm_d.IsActive(n)) {
           auto rng_gen = rng_pool.get_state();
+
+          // frequency data, needed for multigroup
+          [[maybe_unused]] const auto hd = h;
+          [[maybe_unused]] const auto sbd = sb;
+          [[maybe_unused]] const auto numind = numin;
+          [[maybe_unused]] const auto numaxd = numax;
+          [[maybe_unused]] const auto n_nubinsd = n_nubins;
+          [[maybe_unused]] const auto dlnud = dlnu;
+
           auto &coords = vmesh.GetCoordinates(b);
           const Real &dx_i = coords.template Dxc<parthenon::X1DIR>(0, 0, 0);
           const Real &dx_j = coords.template Dxc<parthenon::X2DIR>(0, 0, 0);
@@ -131,8 +161,23 @@ TaskStatus TransportPhotons_DDMC(MeshData<Real> *md, const Real t_start, const R
 
             // Extract physical quantities
             const Real &ff = vmesh(b, fj::fleck_factor(), kp, jp, ip);
-            const Real &ss = vmesh(b, fjh::scattering_opacity(), kp, jp, ip);
-            const Real &aa = vmesh(b, fjh::absorption_opacity(), kp, jp, ip);
+            Real ss = JaybenneNull<Real>();
+            Real aa = JaybenneNull<Real>();
+            [[maybe_unused]] Real rho = JaybenneNull<Real>();
+            [[maybe_unused]] Real temp = JaybenneNull<Real>();
+            [[maybe_unused]] auto opac = opacity;
+            [[maybe_unused]] auto scatter = scattering;
+            [[maybe_unused]] auto eost = eos;
+            if constexpr (FT == FrequencyType::gray) {
+              ss = vmesh(b, fjh::scattering_opacity(), kp, jp, ip);
+              aa = vmesh(b, fjh::absorption_opacity(), kp, jp, ip);
+            } else if constexpr (FT == FrequencyType::multigroup) {
+              rho = vmesh(b, fjh::density(), kp, jp, ip);
+              const Real &sie = vmesh(b, fjh::sie(), kp, jp, ip);
+              temp = eost.TemperatureFromDensityInternalEnergy(rho, sie);
+              ss = scatter.TotalScatteringCoefficient(rho, temp, ee);
+              aa = opac.AbsorptionCoefficient(rho, temp, ee);
+            }
 
             // reset collision indicators
             bool is_absorbed = false;
@@ -156,23 +201,51 @@ TaskStatus TransportPhotons_DDMC(MeshData<Real> *md, const Real t_start, const R
               const Real zu = coords.template Xc<parthenon::X3DIR>(kp) + 0.5 * dx_k;
 
               // get face probabilities
-              const Real &Px_l = vmesh(b, TE::F1, fj::ddmc_face_prob(), kp, jp, ip);
-              const Real &Px_u = vmesh(b, TE::F1, fj::ddmc_face_prob(), kp, jp, ip + 1);
+              const Real &Px_l = vmesh(b, TE::F1, fj::ddmc_hi_face_prob(), kp, jp, ip);
+              const Real &Px_u =
+                  vmesh(b, TE::F1, fj::ddmc_lo_face_prob(), kp, jp, ip + 1);
               const Real &Py_l =
-                  multi_d ? vmesh(b, TE::F2, fj::ddmc_face_prob(), kp, jp, ip) : 0.0;
+                  multi_d ? vmesh(b, TE::F2, fj::ddmc_hi_face_prob(), kp, jp, ip) : 0.0;
               const Real &Py_u =
-                  multi_d ? vmesh(b, TE::F2, fj::ddmc_face_prob(), kp, jp + 1, ip) : 0.0;
+                  multi_d ? vmesh(b, TE::F2, fj::ddmc_lo_face_prob(), kp, jp + 1, ip)
+                          : 0.0;
               const Real &Pz_l =
-                  three_d ? vmesh(b, TE::F3, fj::ddmc_face_prob(), kp, jp, ip) : 0.0;
+                  three_d ? vmesh(b, TE::F3, fj::ddmc_hi_face_prob(), kp, jp, ip) : 0.0;
               const Real &Pz_u =
-                  three_d ? vmesh(b, TE::F3, fj::ddmc_face_prob(), kp + 1, jp, ip) : 0.0;
+                  three_d ? vmesh(b, TE::F3, fj::ddmc_lo_face_prob(), kp + 1, jp, ip)
+                          : 0.0;
+
+              // store old cell indices (this is only needed for multigroup)
+              const int ip_old = ip;
+              const int jp_old = jp;
+              const int kp_old = kp;
+
+              // NOTE(MGDDMC): grey ss will be needed for inelastic scattering
+              Real aa_g = aa;
+              Real gm_g = 0.0;
+              if constexpr (FT == FrequencyType::multigroup) {
+                // clang-format off
+                ddmc_mg_cell_args dmgc{n_nubinsd,
+                                       numind,
+                                       dlnud,
+                                       hd,
+                                       sbd,
+                                       tau_ddmc,
+                                       dx_push,
+                                       rho,
+                                       temp};
+                // clang-format on
+                const auto aagm = calc_ddmc_mg_probs(opac, scatter, dmgc);
+                aa_g = aagm.first;
+                gm_g = aagm.second;
+              }
 
               // create DDMC step argument list
               // clang-format off
               ddmc_step_args dia{ // constants
                                   rng_gen,
                                   t_start, dt,
-                                  ff, aa, ss, vv,
+                                  ff, aa_g, ss, gm_g, vv,
                                   multi_d, three_d,
                                   xl, yl, zl, xu, yu, zu,
                                   Px_l, Py_l, Pz_l, Px_u, Py_u, Pz_u,
@@ -186,6 +259,64 @@ TaskStatus TransportPhotons_DDMC(MeshData<Real> *md, const Real t_start, const R
               if (SQR(vx) + SQR(vy) + SQR(vz) > ske) ptcl_ddmc_albedo(dia, is_rejected);
 
               if (!is_rejected) ptcl_ddmc_step(dia, cutoff);
+
+              if constexpr (FT == FrequencyType::multigroup) {
+                // NOTE: these ddmc_mg_leak_args do not use adjacent cell, so
+                // the face CDF does not sum here to ddmc_(hi|lo)_face_prob.
+                // This is hopefully a minor error.
+
+                // particle must have leaked if nothing else
+                if (!(is_absorbed || is_scattered || is_census || is_rejected)) {
+
+                  // only one index should be +/-1 of the current index
+                  const int ip_u = (ip_old == ip + 1 ? ip_old : ip);
+                  const int ip_l = (ip_old == ip - 1 ? ip_old : ip);
+                  const int jp_u = (jp_old == jp + 1 ? jp_old : jp);
+                  const int jp_l = (jp_old == jp - 1 ? jp_old : jp);
+                  const int kp_u = (kp_old == kp + 1 ? kp_old : kp);
+                  const int kp_l = (kp_old == kp - 1 ? kp_old : kp);
+                  PARTHENON_DEBUG_REQUIRE(ip_u + jp_u + kp_u - ip_l - jp_l - kp_l == 1,
+                                          "invalid index difference for DDMC leakage");
+
+                  // select side of face
+                  const bool use_lo_x = (ip_old == ip - 1);
+                  const bool use_lo_y = (jp_old == jp - 1);
+                  const bool use_lo_z = (kp_old == kp - 1);
+                  // use_lo can only be false here if one of the old is the new index+1
+                  const bool use_lo = (use_lo_x || use_lo_y || use_lo_z);
+
+                  // TODO(MGDDMC): is this dx alone sufficient for nu-sampling at face?
+                  const Real dx_f = (ip_old != ip ? dx_i : (jp_old != jp ? dx_j : dx_k));
+
+                  // get rho and temperature
+                  const Real &rho_l = vmesh(b, fjh::density(), kp_l, jp_l, ip_l);
+                  const Real &sie_l = vmesh(b, fjh::sie(), kp_l, jp_l, ip_l);
+                  const Real temp_l =
+                      eos.TemperatureFromDensityInternalEnergy(rho_l, sie_l);
+                  const Real &rho_u = vmesh(b, fjh::density(), kp_u, jp_u, ip_u);
+                  const Real &sie_u = vmesh(b, fjh::sie(), kp_u, jp_u, ip_u);
+                  const Real temp_u =
+                      eos.TemperatureFromDensityInternalEnergy(rho_u, sie_u);
+
+                  // clang-format off
+                  const ddmc_mg_leak_args dmg{n_nubinsd,
+                                              numind,
+                                              dlnud,
+                                              hd,
+                                              sbd,
+                                              tau_ddmc,
+                                              dx_f,
+                                              dx_f,
+                                              rho_l,
+                                              rho_u,
+                                              temp_l,
+                                              temp_u};
+                  // clang-format off
+
+                  // sample particle frequency (energy units)
+                  ee = sample_leakage_group(opac, scatter, dmg, use_lo, rng_gen);
+                }
+              }
 
             } else {
 
@@ -253,10 +384,44 @@ TaskStatus TransportPhotons_DDMC(MeshData<Real> *md, const Real t_start, const R
             }
 
             if (is_scattered) {
-              // process scattering
-              // TODO(BRR): if eff scatter, redistribute frequency
-              // TODO(BRR): template on scattering model
-              ScatterKernel(rng_gen, vv, vx, vy, vz);
+
+              // form particle scattering argument struct
+              ptcl_scat_args psa{rng_gen, vv, vx, vy, vz, ee};
+
+              // if multigroup eff scatter, redistribute frequency
+              if constexpr (FT == FrequencyType::gray) {
+
+                // just do direction-sampling (only called by IMC, by construction)
+                sample_vol_iso_dir(psa);
+
+              } else if constexpr (FT == FrequencyType::multigroup) {
+
+                if (is_ddmc_step) {
+                  // clang-format off
+                  ddmc_mg_cell_args dmgc{n_nubinsd,
+                                         numind,
+                                         dlnud,
+                                         hd,
+                                         sbd,
+                                         tau_ddmc,
+                                         dx_push,
+                                         rho,
+                                         temp};
+                  // clang-format on
+                  ee = sample_ddmc2imc_outscatter(opac, scatter, dmgc, rng_gen);
+                } else {
+
+                  // form cell scattering argument struct
+                  // clang-format off
+                  cell_scat_args csa{b, ip, jp, kp,
+                                     ff, aa, ss,
+                                     n_nubinsd, numind, numaxd, hd};
+                  // clang-format on
+
+                  // invoke frequency-dependent scattering kernel
+                  scatter_kernel(vmesh, csa, psa);
+                }
+              }
             }
 
             if (is_census) {
