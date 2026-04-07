@@ -16,6 +16,8 @@ struct ddmc_mg_leak_args {
   const Real &hd;       // Planck constant
   const Real &sbd;      // Stefan-Boltzmann constant
   const Real &tau_ddmc; // DDMC cell optical-thickness threshold
+  const Real &dx_lmin;  // min cell length scale used to activate DDMC
+  const Real &dx_umin;  // min cell length scale used to activate DDMC
   const Real &dx_l;     // lower cell length
   const Real &dx_u;     // upper cell length
   const Real &rho_l;    // lower cell density
@@ -65,15 +67,17 @@ calc_ddmc_mg_leak_numdenom(const OP &abs, const SC &sct, const ddmc_mg_leak_args
     const Real aa_u = abs.AbsorptionCoefficient(dmg.rho_u, dmg.temp_u, nu);
 
     // calculate optical thicknesses from lower and upper cell
+    const Real tau_lmin = dmg.dx_lmin * (ss_l + aa_l);
+    const Real tau_umin = dmg.dx_umin * (ss_u + aa_u);
     const Real tau_l = dmg.dx_l * (ss_l + aa_l);
     const Real tau_u = dmg.dx_u * (ss_u + aa_u);
 
     // check if group is included
-    const bool use_grp = (use_lo ? tau_l > dmg.tau_ddmc : tau_u > dmg.tau_ddmc);
+    const bool use_grp = (use_lo ? tau_lmin > dmg.tau_ddmc : tau_umin > dmg.tau_ddmc);
 
     if (use_grp) {
-      const Real mtau_l = tau_l > dmg.tau_ddmc ? tau_l : 2.0 * lam_ext;
-      const Real mtau_u = tau_u > dmg.tau_ddmc ? tau_u : 2.0 * lam_ext;
+      const Real mtau_l = tau_lmin > dmg.tau_ddmc ? tau_l : 2.0 * lam_ext;
+      const Real mtau_u = tau_umin > dmg.tau_ddmc ? tau_u : 2.0 * lam_ext;
 
       // calculate per-nu-bin leakage
       const Real Pg = 2.0 / (3.0 * (mtau_l + mtau_u));
@@ -142,15 +146,17 @@ KOKKOS_FORCEINLINE_FUNCTION Real sample_leakage_group(const OP &abs, const SC &s
     const Real aa_u = abs.AbsorptionCoefficient(dmg.rho_u, dmg.temp_u, nu);
 
     // calculate optical thicknesses from lower and upper cell
+    const Real tau_lmin = dmg.dx_lmin * (ss_l + aa_l);
+    const Real tau_umin = dmg.dx_umin * (ss_u + aa_u);
     const Real tau_l = dmg.dx_l * (ss_l + aa_l);
     const Real tau_u = dmg.dx_u * (ss_u + aa_u);
 
     // check if group is included
-    const bool use_grp = (use_lo ? tau_l > dmg.tau_ddmc : tau_u > dmg.tau_ddmc);
+    const bool use_grp = (use_lo ? tau_lmin > dmg.tau_ddmc : tau_umin > dmg.tau_ddmc);
 
     if (use_grp) {
-      const Real mtau_l = tau_l > dmg.tau_ddmc ? tau_l : 2.0 * lam_ext;
-      const Real mtau_u = tau_u > dmg.tau_ddmc ? tau_u : 2.0 * lam_ext;
+      const Real mtau_l = tau_lmin > dmg.tau_ddmc ? tau_l : 2.0 * lam_ext;
+      const Real mtau_u = tau_umin > dmg.tau_ddmc ? tau_u : 2.0 * lam_ext;
 
       // calculate per-nu-bin leakage
       const Real Pg = 2.0 / (3.0 * (mtau_l + mtau_u));

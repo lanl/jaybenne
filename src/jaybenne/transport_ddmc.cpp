@@ -307,6 +307,8 @@ TaskStatus TransportPhotons_DDMC(MeshData<Real> *md, const Real t_start, const R
                                               tau_ddmc,
                                               dx_f,
                                               dx_f,
+                                              dx_f,
+                                              dx_f,
                                               rho_l,
                                               rho_u,
                                               temp_l,

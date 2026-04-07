@@ -531,6 +531,8 @@ TaskStatus UpdateDerivedTransportFieldsImpl(MeshData<Real> *md, const Real dt) {
           // get coordinates of block
           auto &coords = vmesh.GetCoordinates(b);
           const Real &dx_i = coords.Dxc<parthenon::X1DIR>(0, 0, 0);
+          const Real &dx_j = coords.Dxc<parthenon::X2DIR>(0, 0, 0);
+          const Real &dx_k = coords.Dxc<parthenon::X3DIR>(0, 0, 0);
 
           // get current, lower, upper neighbor block levels in x-direction
           const Real rlev = static_cast<Real>(vmesh.GetLevel(b, 0, 0, 0));
@@ -541,9 +543,18 @@ TaskStatus UpdateDerivedTransportFieldsImpl(MeshData<Real> *md, const Real dt) {
                                    ? rlev
                                    : static_cast<Real>(vmesh.GetLevel(b, 0, 0, 1));
 
+          // calculate neighbor refinement scaling factors
+          const Real scle_lx = i == ib.s ? std::pow(2.0, rlev - rlev_lx) : 1.0;
+          const Real scle_ux = i == iu ? std::pow(2.0, rlev - rlev_ux) : 1.0;
+
           // calculate neighbor dx values
-          const Real dx_lx = i == ib.s ? std::pow(2.0, rlev - rlev_lx) * dx_i : dx_i;
-          const Real dx_ux = i == iu ? std::pow(2.0, rlev - rlev_ux) * dx_i : dx_i;
+          const Real dx_lx = scle_lx * dx_i;
+          const Real dx_ux = scle_ux * dx_i;
+
+          // calculate neighbor min length for min optical thickness (for threshold check)
+          const Real dx_push = std::min(dx_i, std::min(dx_j, dx_k));
+          const Real dx_lmin = scle_lx * dx_push;
+          const Real dx_umin = scle_ux * dx_push;
 
           // TODO: interpolate temperatures to evaluate face opacities?
           // (If opacity gradients are not large, maybe this is not needed)
@@ -577,10 +588,12 @@ TaskStatus UpdateDerivedTransportFieldsImpl(MeshData<Real> *md, const Real dt) {
             aa_u = mopac.AbsorptionCoefficient(rho_u, temp_u, gmode2d);
 
             // calculate optical thicknesses from lower and upper cell
+            const Real tau_lmin = dx_lmin * (ss_l + aa_l);
+            const Real tau_umin = dx_umin * (ss_u + aa_u);
             Real tau_l = dx_lx * (ss_l + aa_l);
             Real tau_u = dx_ux * (ss_u + aa_u);
-            tau_l = tau_l > tau_ddmc ? tau_l : 2.0 * lam_ext;
-            tau_u = tau_u > tau_ddmc ? tau_u : 2.0 * lam_ext;
+            tau_l = tau_lmin > tau_ddmc ? tau_l : 2.0 * lam_ext;
+            tau_u = tau_umin > tau_ddmc ? tau_u : 2.0 * lam_ext;
 
             // set probability (face DDMC albedo); for grey mode these are copies
             vmesh(b, TE::F1, fj::ddmc_lo_face_prob(), k, j, i) =
@@ -598,6 +611,8 @@ TaskStatus UpdateDerivedTransportFieldsImpl(MeshData<Real> *md, const Real dt) {
                                         hd,
                                         sbd,
                                         tau_ddmc,
+                                        dx_lmin,
+                                        dx_umin,
                                         dx_lx,
                                         dx_ux,
                                         rho_l,
@@ -630,7 +645,9 @@ TaskStatus UpdateDerivedTransportFieldsImpl(MeshData<Real> *md, const Real dt) {
           ib.e, KOKKOS_LAMBDA(const int &b, const int &k, const int &j, const int &i) {
             // get coordinates of block
             auto &coords = vmesh.GetCoordinates(b);
+            const Real &dx_i = coords.Dxc<parthenon::X1DIR>(0, 0, 0);
             const Real &dx_j = coords.Dxc<parthenon::X2DIR>(0, 0, 0);
+            const Real &dx_k = coords.Dxc<parthenon::X3DIR>(0, 0, 0);
 
             // get current, lower, upper neighbor block levels in x-direction
             const Real rlev = static_cast<Real>(vmesh.GetLevel(b, 0, 0, 0));
@@ -641,9 +658,19 @@ TaskStatus UpdateDerivedTransportFieldsImpl(MeshData<Real> *md, const Real dt) {
                                      ? rlev
                                      : static_cast<Real>(vmesh.GetLevel(b, 0, 1, 0));
 
+            // calculate neighbor refinement scaling factors
+            const Real scle_ly = j == jb.s ? std::pow(2.0, rlev - rlev_ly) : 1.0;
+            const Real scle_uy = j == ju ? std::pow(2.0, rlev - rlev_uy) : 1.0;
+
             // calculate neighbor dx values
-            const Real dx_ly = j == jb.s ? std::pow(2.0, rlev - rlev_ly) * dx_j : dx_j;
-            const Real dx_uy = j == ju ? std::pow(2.0, rlev - rlev_uy) * dx_j : dx_j;
+            const Real dx_ly = scle_ly * dx_j;
+            const Real dx_uy = scle_uy * dx_j;
+
+            // calculate neighbor min length for min optical thickness (for threshold
+            // check)
+            const Real dx_push = std::min(dx_i, std::min(dx_j, dx_k));
+            const Real dx_lmin = scle_ly * dx_push;
+            const Real dx_umin = scle_uy * dx_push;
 
             // TODO: interpolate temperatures to evaluate face opacities?
             // (If opacity gradients are not large, maybe this is not needed)
@@ -676,10 +703,12 @@ TaskStatus UpdateDerivedTransportFieldsImpl(MeshData<Real> *md, const Real dt) {
               aa_u = mopac.AbsorptionCoefficient(rho_u, temp_u, gmode2d);
 
               // calculate optical thicknesses from lower and upper cell
+              const Real tau_lmin = dx_lmin * (ss_l + aa_l);
+              const Real tau_umin = dx_umin * (ss_u + aa_u);
               Real tau_l = dx_ly * (ss_l + aa_l);
               Real tau_u = dx_uy * (ss_u + aa_u);
-              tau_l = tau_l > tau_ddmc ? tau_l : 2.0 * lam_ext;
-              tau_u = tau_u > tau_ddmc ? tau_u : 2.0 * lam_ext;
+              tau_l = tau_lmin > tau_ddmc ? tau_l : 2.0 * lam_ext;
+              tau_u = tau_umin > tau_ddmc ? tau_u : 2.0 * lam_ext;
 
               // set probability (face DDMC albedo); for grey mode these are copies
               vmesh(b, TE::F2, fj::ddmc_lo_face_prob(), k, j, i) =
@@ -698,6 +727,8 @@ TaskStatus UpdateDerivedTransportFieldsImpl(MeshData<Real> *md, const Real dt) {
                                           hd,
                                           sbd,
                                           tau_ddmc,
+                                          dx_lmin,
+                                          dx_umin,
                                           dx_ly,
                                           dx_uy,
                                           rho_l,
@@ -731,6 +762,8 @@ TaskStatus UpdateDerivedTransportFieldsImpl(MeshData<Real> *md, const Real dt) {
           ib.e, KOKKOS_LAMBDA(const int &b, const int &k, const int &j, const int &i) {
             // get coordinates of block
             auto &coords = vmesh.GetCoordinates(b);
+            const Real &dx_i = coords.Dxc<parthenon::X1DIR>(0, 0, 0);
+            const Real &dx_j = coords.Dxc<parthenon::X2DIR>(0, 0, 0);
             const Real &dx_k = coords.Dxc<parthenon::X3DIR>(0, 0, 0);
 
             // get current, lower, upper neighbor block levels in x-direction
@@ -742,9 +775,19 @@ TaskStatus UpdateDerivedTransportFieldsImpl(MeshData<Real> *md, const Real dt) {
                                      ? rlev
                                      : static_cast<Real>(vmesh.GetLevel(b, 1, 0, 0));
 
+            // calculate neighbor refinement scaling factors
+            const Real scle_lz = k == kb.s ? std::pow(2.0, rlev - rlev_lz) : 1.0;
+            const Real scle_uz = k == ku ? std::pow(2.0, rlev - rlev_uz) : 1.0;
+
             // calculate neighbor dx values
-            const Real dx_lz = k == kb.s ? std::pow(2.0, rlev - rlev_lz) * dx_k : dx_k;
-            const Real dx_uz = k == ku ? std::pow(2.0, rlev - rlev_uz) * dx_k : dx_k;
+            const Real dx_lz = scle_lz * dx_k;
+            const Real dx_uz = scle_uz * dx_k;
+
+            // calculate neighbor min length for min optical thickness (for threshold
+            // check)
+            const Real dx_push = std::min(dx_i, std::min(dx_j, dx_k));
+            const Real dx_lmin = scle_lz * dx_push;
+            const Real dx_umin = scle_uz * dx_push;
 
             // TODO: interpolate temperatures to evaluate face opacities?
             // (If opacity gradients are not large, maybe this is not needed)
@@ -777,10 +820,12 @@ TaskStatus UpdateDerivedTransportFieldsImpl(MeshData<Real> *md, const Real dt) {
               aa_u = mopac.AbsorptionCoefficient(rho_u, temp_u, gmode2d);
 
               // calculate optical thicknesses from lower and upper cell
+              const Real tau_lmin = dx_lmin * (ss_l + aa_l);
+              const Real tau_umin = dx_umin * (ss_u + aa_u);
               Real tau_l = dx_lz * (ss_l + aa_l);
               Real tau_u = dx_uz * (ss_u + aa_u);
-              tau_l = tau_l > tau_ddmc ? tau_l : 2.0 * lam_ext;
-              tau_u = tau_u > tau_ddmc ? tau_u : 2.0 * lam_ext;
+              tau_l = tau_lmin > tau_ddmc ? tau_l : 2.0 * lam_ext;
+              tau_u = tau_umin > tau_ddmc ? tau_u : 2.0 * lam_ext;
 
               // set probability (face DDMC albedo); for grey mode these are copies
               vmesh(b, TE::F3, fj::ddmc_lo_face_prob(), k, j, i) =
@@ -799,6 +844,8 @@ TaskStatus UpdateDerivedTransportFieldsImpl(MeshData<Real> *md, const Real dt) {
                                           hd,
                                           sbd,
                                           tau_ddmc,
+                                          dx_lmin,
+                                          dx_umin,
                                           dx_lz,
                                           dx_uz,
                                           rho_l,
