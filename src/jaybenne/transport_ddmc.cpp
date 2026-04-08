@@ -47,7 +47,7 @@ TaskStatus TransportPhotons_DDMC(MeshData<Real> *md, const Real t_start, const R
 
   // data needed for multigroup frequency sampling
   const Real h = jb_pkg->template Param<Real>("planck_constant");
-  const Real sb = jb_pkg->template Param<Real>("stefan_boltzmann");
+  const Real sb = jb_pkg->template Param<Real>("boltzmann");
   int n_nubins = JaybenneNull<int>();
   Real numin = JaybenneNull<Real>();
   Real numax = JaybenneNull<Real>();
@@ -411,6 +411,10 @@ TaskStatus TransportPhotons_DDMC(MeshData<Real> *md, const Real t_start, const R
                                          temp};
                   // clang-format on
                   ee = sample_ddmc2imc_outscatter(opac, scatter, dmgc, rng_gen);
+
+                  // resample particle direction
+                  sample_vol_iso_dir(psa);
+
                 } else {
 
                   // form cell scattering argument struct

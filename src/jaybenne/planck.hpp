@@ -28,8 +28,12 @@ KOKKOS_FORCEINLINE_FUNCTION
 Real midpoint_Planck(const Real &temp, const Real &nu, const Real &dnu) {
   const Real tinv = 1.0 / temp;
   const Real x = nu * tinv;
-  const Real efac = std::exp(-x);
-  return (dnu * tinv) * (x * x * x) * efac / (1.0 - efac);
+  if (x > 1e-4) {
+    const Real efac = std::exp(-x);
+    return (dnu * tinv) * (x * x * x) * efac / (1.0 - efac);
+  } else {
+    return (dnu * tinv) * (x * x);
+  }
 }
 
 //----------------------------------------------------------------------------------------

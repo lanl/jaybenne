@@ -234,6 +234,7 @@ Initialize_impl(ParameterInput *pin, EOS &eos,
   pkg->AddParam<>("speed_of_light", units.c);
   pkg->AddParam<>("stefan_boltzmann", units.sb);
   pkg->AddParam<>("planck_constant", units.h);
+  pkg->AddParam<>("boltzmann", units.kb);
 
   // RNG
   bool unique_rank_seeds = pin->GetOrAddBoolean(block_name, "unique_rank_seeds", true);
@@ -370,9 +371,6 @@ std::shared_ptr<StateDescriptor> Initialize(ParameterInput *pin, Opacity &opacit
 
   auto pkg = Initialize_impl(pin, eos, units, block_name);
 
-  PARTHENON_REQUIRE(pkg->template Param<bool>("use_ddmc") == false,
-                    "DDMC not supported for multigroup currently!");
-
   // Frequency discretization
   auto time = units.time;
   Real numin = pin->GetReal(block_name, "numin"); // in Hz
@@ -457,7 +455,7 @@ TaskStatus UpdateDerivedTransportFieldsImpl(MeshData<Real> *md, const Real dt) {
     numin = jbn->template Param<Real>("numin");
     numax = jbn->template Param<Real>("numax");
     h = jbn->template Param<Real>("planck_constant");
-    sb = jbn->template Param<Real>("stefan_boltzmann");
+    sb = jbn->template Param<Real>("boltzmann");
     // initialize (assumed) log spacing
     dlnu = (std::log(numax) - std::log(numin)) / n_nubins;
   }

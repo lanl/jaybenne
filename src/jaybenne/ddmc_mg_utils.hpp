@@ -51,6 +51,7 @@ calc_ddmc_mg_leak_numdenom(const OP &abs, const SC &sct, const ddmc_mg_leak_args
   // initialize unnnormalized Planck integral and probability
   Real planck_sum = 0.0;
   Real leak_sum = 0.0;
+  int nnubins_used = 0;
 
   // integrate
   for (int n = 0; n < dmg.n_nubins; ++n) {
@@ -76,6 +77,8 @@ calc_ddmc_mg_leak_numdenom(const OP &abs, const SC &sct, const ddmc_mg_leak_args
     const bool use_grp = (use_lo ? tau_lmin > dmg.tau_ddmc : tau_umin > dmg.tau_ddmc);
 
     if (use_grp) {
+      nnubins_used++;
+
       const Real mtau_l = tau_lmin > dmg.tau_ddmc ? tau_l : 2.0 * lam_ext;
       const Real mtau_u = tau_umin > dmg.tau_ddmc ? tau_u : 2.0 * lam_ext;
 
@@ -94,7 +97,7 @@ calc_ddmc_mg_leak_numdenom(const OP &abs, const SC &sct, const ddmc_mg_leak_args
     }
   }
 
-  PARTHENON_DEBUG_REQUIRE(planck_sum > 0.0, "Planck integral <= 0.0");
+  PARTHENON_REQUIRE(nnubins_used ? planck_sum > 0.0 : true, "Planck integral <= 0.0");
   return {leak_sum, planck_sum};
 }
 
@@ -105,6 +108,7 @@ KOKKOS_FORCEINLINE_FUNCTION Real calc_ddmc_mg_leakprob(const OP &abs, const SC &
                                                        const ddmc_mg_leak_args &dmg,
                                                        const bool &use_lo) {
   const auto leak_sum_pair = calc_ddmc_mg_leak_numdenom(abs, sct, dmg, use_lo);
+  if (!(leak_sum_pair.second > 0.0)) return 0.0;
   // normalize sum (so that leakage probability is an average)
   return leak_sum_pair.first / leak_sum_pair.second;
 }
