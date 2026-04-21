@@ -58,14 +58,14 @@ calc_ddmc_mg_leak_numdenom(const OP &abs, const SC &sct, const ddmc_mg_leak_args
 
     // this is the mid-point of group n in log-space:
     // nu=exp(log(numin)+(n+0.5)*dlnu)
-    const Real nu = dmg.numind * std::exp((n + 0.5) * dmg.dlnu);
-    const Real dnu = nu * dmg.dlnu;
+    const Real ee = dmg.hd * dmg.numind * std::exp((n + 0.5) * dmg.dlnu);
+    const Real dee = ee * dmg.dlnu;
 
     // evaluate face opacities at nu
-    const Real ss_l = sct.TotalScatteringCoefficient(dmg.rho_l, dmg.temp_l, nu);
-    const Real aa_l = abs.AbsorptionCoefficient(dmg.rho_l, dmg.temp_l, nu);
-    const Real ss_u = sct.TotalScatteringCoefficient(dmg.rho_u, dmg.temp_u, nu);
-    const Real aa_u = abs.AbsorptionCoefficient(dmg.rho_u, dmg.temp_u, nu);
+    const Real ss_l = sct.TotalScatteringCoefficient(dmg.rho_l, dmg.temp_l, ee);
+    const Real aa_l = abs.AbsorptionCoefficient(dmg.rho_l, dmg.temp_l, ee);
+    const Real ss_u = sct.TotalScatteringCoefficient(dmg.rho_u, dmg.temp_u, ee);
+    const Real aa_u = abs.AbsorptionCoefficient(dmg.rho_u, dmg.temp_u, ee);
 
     // calculate optical thicknesses from lower and upper cell
     const Real tau_lmin = dmg.dx_lmin * (ss_l + aa_l);
@@ -89,7 +89,7 @@ calc_ddmc_mg_leak_numdenom(const OP &abs, const SC &sct, const ddmc_mg_leak_args
       const Real temp_f = std::max(dmg.temp_l, dmg.temp_u);
 
       // get an unnormalized, non-dimensional Planck integral over group
-      const Real bg = midpoint_Planck(dmg.sbd * temp_f, dmg.hd * nu, dmg.hd * dnu);
+      const Real bg = midpoint_Planck(dmg.sbd * temp_f, ee, dee);
 
       // aggregate values
       planck_sum += bg;
@@ -133,21 +133,21 @@ KOKKOS_FORCEINLINE_FUNCTION Real sample_leakage_group(const OP &abs, const SC &s
 
   // sample
   const Real rand1 = leak_tot_sum * rng_gen.drand();
-  Real nu_sampled = -1.0; // poisoned initialization
+  Real ee_sampled = -1.0; // poisoned initialization
 
   // integrate
   for (int n = 0; n < dmg.n_nubins; ++n) {
 
     // this is the mid-point of group n in log-space:
     // nu=exp(log(numin)+(n+0.5)*dlnu)
-    const Real nu = dmg.numind * std::exp((n + 0.5) * dmg.dlnu);
-    const Real dnu = nu * dmg.dlnu;
+    const Real ee = dmg.hd * dmg.numind * std::exp((n + 0.5) * dmg.dlnu);
+    const Real dee = ee * dmg.dlnu;
 
     // evaluate face opacities at nu
-    const Real ss_l = sct.TotalScatteringCoefficient(dmg.rho_l, dmg.temp_l, nu);
-    const Real aa_l = abs.AbsorptionCoefficient(dmg.rho_l, dmg.temp_l, nu);
-    const Real ss_u = sct.TotalScatteringCoefficient(dmg.rho_u, dmg.temp_u, nu);
-    const Real aa_u = abs.AbsorptionCoefficient(dmg.rho_u, dmg.temp_u, nu);
+    const Real ss_l = sct.TotalScatteringCoefficient(dmg.rho_l, dmg.temp_l, ee);
+    const Real aa_l = abs.AbsorptionCoefficient(dmg.rho_l, dmg.temp_l, ee);
+    const Real ss_u = sct.TotalScatteringCoefficient(dmg.rho_u, dmg.temp_u, ee);
+    const Real aa_u = abs.AbsorptionCoefficient(dmg.rho_u, dmg.temp_u, ee);
 
     // calculate optical thicknesses from lower and upper cell
     const Real tau_lmin = dmg.dx_lmin * (ss_l + aa_l);
@@ -169,22 +169,22 @@ KOKKOS_FORCEINLINE_FUNCTION Real sample_leakage_group(const OP &abs, const SC &s
       const Real temp_f = std::max(dmg.temp_l, dmg.temp_u);
 
       // get an unnormalized, non-dimensional Planck integral over group
-      const Real bg = midpoint_Planck(dmg.sbd * temp_f, dmg.hd * nu, dmg.hd * nu);
+      const Real bg = midpoint_Planck(dmg.sbd * temp_f, ee, dee);
 
       // aggregate values
       planck_sum += bg;
       leak_sum += bg * Pg;
       if (leak_sum > rand1) {
-        nu_sampled = nu;
+        ee_sampled = ee;
         break;
       }
     }
   }
 
-  PARTHENON_DEBUG_REQUIRE(nu_sampled > 0.0, "nu_sampled <= 0.0");
+  PARTHENON_DEBUG_REQUIRE(ee_sampled > 0.0, "ee_sampled <= 0.0");
 
-  // return sampled energy value (in units of frequency)
-  return dmg.hd * nu_sampled;
+  // return sampled energy value (in units of energy)
+  return ee_sampled;
 }
 
 //----------------------------------------------------------------------------------------
@@ -203,15 +203,15 @@ calc_ddmc_mg_probs(const OP &abs, const SC &sct, const ddmc_mg_cell_args &dmgc) 
 
     // this is the mid-point of group n in log-space:
     // nu=exp(log(numin)+(n+0.5)*dlnu)
-    const Real nu = dmgc.numind * std::exp((n + 0.5) * dmgc.dlnu);
-    const Real dnu = nu * dmgc.dlnu;
+    const Real ee = dmgc.hd * dmgc.numind * std::exp((n + 0.5) * dmgc.dlnu);
+    const Real dee = ee * dmgc.dlnu;
 
     // evaluate face opacities at nu
-    const Real ss = sct.TotalScatteringCoefficient(dmgc.rho, dmgc.temp, nu);
-    const Real aa = abs.AbsorptionCoefficient(dmgc.rho, dmgc.temp, nu);
+    const Real ss = sct.TotalScatteringCoefficient(dmgc.rho, dmgc.temp, ee);
+    const Real aa = abs.AbsorptionCoefficient(dmgc.rho, dmgc.temp, ee);
 
     // get an unnormalized, non-dimensional Planck integral over group
-    const Real bg = midpoint_Planck(dmgc.sbd * dmgc.temp, dmgc.hd * nu, dmgc.hd * dnu);
+    const Real bg = midpoint_Planck(dmgc.sbd * dmgc.temp, ee, dee);
 
     // sum total (Planck)
     abs_tot_sum += bg * aa;
@@ -225,8 +225,15 @@ calc_ddmc_mg_probs(const OP &abs, const SC &sct, const ddmc_mg_cell_args &dmgc) 
     }
   }
 
+  PARTHENON_DEBUG_REQUIRE(planck_sum > 0.0, "planck_sum = 0: no DDMC groups in DDMC.");
+
   // 1st entry = DDMC absorption, 2nd = out-scatter probability
-  return {abs_sum / planck_sum, 1.0 - abs_sum / abs_tot_sum};
+  if (abs_tot_sum > 0.0) {
+    return {abs_sum / planck_sum, 1.0 - abs_sum / abs_tot_sum};
+  } else {
+    // no possible outscatter if there is no absorption/redistribution
+    return {abs_sum / planck_sum, 0.0};
+  }
 }
 
 //----------------------------------------------------------------------------------------
@@ -244,24 +251,24 @@ KOKKOS_FORCEINLINE_FUNCTION Real sample_ddmc2imc_outscatter(const OP &abs, const
 
     // this is the mid-point of group n in log-space:
     // nu=exp(log(numin)+(n+0.5)*dlnu)
-    const Real nu = dmgc.numind * std::exp((n + 0.5) * dmgc.dlnu);
-    const Real dnu = nu * dmgc.dlnu;
+    const Real ee = dmgc.hd * dmgc.numind * std::exp((n + 0.5) * dmgc.dlnu);
+    const Real dee = ee * dmgc.dlnu;
 
     // evaluate face opacities at nu
-    const Real ss = sct.TotalScatteringCoefficient(dmgc.rho, dmgc.temp, nu);
-    const Real aa = abs.AbsorptionCoefficient(dmgc.rho, dmgc.temp, nu);
+    const Real ss = sct.TotalScatteringCoefficient(dmgc.rho, dmgc.temp, ee);
+    const Real aa = abs.AbsorptionCoefficient(dmgc.rho, dmgc.temp, ee);
 
     // check group exclusion
     if (!(dmgc.dx_min * (ss + aa) > dmgc.tau_ddmc)) {
       // get an unnormalized, non-dimensional Planck integral over group
-      const Real bg = midpoint_Planck(dmgc.sbd * dmgc.temp, dmgc.hd * nu, dmgc.hd * dnu);
+      const Real bg = midpoint_Planck(dmgc.sbd * dmgc.temp, ee, dee);
       scat_out_tot_sum += bg * aa;
     }
   }
 
   // sample
   const Real rand1 = scat_out_tot_sum * rng_gen.drand();
-  Real nu_sampled = -1.0; // poisoned initialization
+  Real ee_sampled = -1.0; // poisoned initialization
 
   Real abs_sum = 0.0;
 
@@ -270,30 +277,30 @@ KOKKOS_FORCEINLINE_FUNCTION Real sample_ddmc2imc_outscatter(const OP &abs, const
 
     // this is the mid-point of group n in log-space:
     // nu=exp(log(numin)+(n+0.5)*dlnu)
-    const Real nu = dmgc.numind * std::exp((n + 0.5) * dmgc.dlnu);
-    const Real dnu = nu * dmgc.dlnu;
+    const Real ee = dmgc.hd * dmgc.numind * std::exp((n + 0.5) * dmgc.dlnu);
+    const Real dee = ee * dmgc.dlnu;
 
     // evaluate face opacities at nu
-    const Real ss = sct.TotalScatteringCoefficient(dmgc.rho, dmgc.temp, nu);
-    const Real aa = abs.AbsorptionCoefficient(dmgc.rho, dmgc.temp, nu);
+    const Real ss = sct.TotalScatteringCoefficient(dmgc.rho, dmgc.temp, ee);
+    const Real aa = abs.AbsorptionCoefficient(dmgc.rho, dmgc.temp, ee);
 
     // check group exclusion
     if (!(dmgc.dx_min * (ss + aa) > dmgc.tau_ddmc)) {
 
       // get an unnormalized, non-dimensional Planck integral over group
-      const Real bg = midpoint_Planck(dmgc.sbd * dmgc.temp, dmgc.hd * nu, dmgc.hd * dnu);
+      const Real bg = midpoint_Planck(dmgc.sbd * dmgc.temp, ee, dee);
 
       // aggregate values
       abs_sum += bg * aa;
 
       if (abs_sum > rand1) {
-        nu_sampled = nu;
+        ee_sampled = ee;
         break;
       }
     }
   }
 
-  return dmgc.hd * nu_sampled;
+  return ee_sampled;
 }
 
 } // namespace jaybenne
