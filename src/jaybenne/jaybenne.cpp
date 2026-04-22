@@ -579,6 +579,8 @@ TaskStatus UpdateDerivedTransportFieldsImpl(MeshData<Real> *md, const Real dt) {
           [[maybe_unused]] const auto n_nubinsd = n_nubins;
           [[maybe_unused]] const auto hd = h;
           [[maybe_unused]] const auto sbd = sb;
+          [[maybe_unused]] const auto tau_ddmcd = tau_ddmc;
+          [[maybe_unused]] const auto lam_extd = lam_ext;
           if constexpr (FT == FrequencyType::gray) {
             ss_l = mscatter.RosselandMeanTotalScatteringCoefficient(rho_l, temp_l);
             aa_l = mopac.AbsorptionCoefficient(rho_l, temp_l, gmode2d);
@@ -590,8 +592,8 @@ TaskStatus UpdateDerivedTransportFieldsImpl(MeshData<Real> *md, const Real dt) {
             const Real tau_umin = dx_umin * (ss_u + aa_u);
             Real tau_l = dx_lx * (ss_l + aa_l);
             Real tau_u = dx_ux * (ss_u + aa_u);
-            tau_l = tau_lmin > tau_ddmc ? tau_l : 2.0 * lam_ext;
-            tau_u = tau_umin > tau_ddmc ? tau_u : 2.0 * lam_ext;
+            tau_l = tau_lmin > tau_ddmcd ? tau_l : 2.0 * lam_extd;
+            tau_u = tau_umin > tau_ddmcd ? tau_u : 2.0 * lam_extd;
 
             // set probability (face DDMC albedo); for grey mode these are copies
             vmesh(b, TE::F1, fj::ddmc_lo_face_prob(), k, j, i) =
@@ -608,7 +610,7 @@ TaskStatus UpdateDerivedTransportFieldsImpl(MeshData<Real> *md, const Real dt) {
                                         dlnud,
                                         hd,
                                         sbd,
-                                        tau_ddmc,
+                                        tau_ddmcd,
                                         dx_lmin,
                                         dx_umin,
                                         dx_lx,
@@ -694,6 +696,8 @@ TaskStatus UpdateDerivedTransportFieldsImpl(MeshData<Real> *md, const Real dt) {
             [[maybe_unused]] const auto n_nubinsd = n_nubins;
             [[maybe_unused]] const auto hd = h;
             [[maybe_unused]] const auto sbd = sb;
+            [[maybe_unused]] const auto tau_ddmcd = tau_ddmc;
+            [[maybe_unused]] const auto lam_extd = lam_ext;
             if constexpr (FT == FrequencyType::gray) {
               ss_l = mscatter.RosselandMeanTotalScatteringCoefficient(rho_l, temp_l);
               aa_l = mopac.AbsorptionCoefficient(rho_l, temp_l, gmode2d);
@@ -705,8 +709,8 @@ TaskStatus UpdateDerivedTransportFieldsImpl(MeshData<Real> *md, const Real dt) {
               const Real tau_umin = dx_umin * (ss_u + aa_u);
               Real tau_l = dx_ly * (ss_l + aa_l);
               Real tau_u = dx_uy * (ss_u + aa_u);
-              tau_l = tau_lmin > tau_ddmc ? tau_l : 2.0 * lam_ext;
-              tau_u = tau_umin > tau_ddmc ? tau_u : 2.0 * lam_ext;
+              tau_l = tau_lmin > tau_ddmcd ? tau_l : 2.0 * lam_extd;
+              tau_u = tau_umin > tau_ddmcd ? tau_u : 2.0 * lam_extd;
 
               // set probability (face DDMC albedo); for grey mode these are copies
               vmesh(b, TE::F2, fj::ddmc_lo_face_prob(), k, j, i) =
@@ -724,7 +728,7 @@ TaskStatus UpdateDerivedTransportFieldsImpl(MeshData<Real> *md, const Real dt) {
                                           dlnud,
                                           hd,
                                           sbd,
-                                          tau_ddmc,
+                                          tau_ddmcd,
                                           dx_lmin,
                                           dx_umin,
                                           dx_ly,
@@ -811,6 +815,8 @@ TaskStatus UpdateDerivedTransportFieldsImpl(MeshData<Real> *md, const Real dt) {
             [[maybe_unused]] const auto n_nubinsd = n_nubins;
             [[maybe_unused]] const auto hd = h;
             [[maybe_unused]] const auto sbd = sb;
+            [[maybe_unused]] const auto tau_ddmcd = tau_ddmc;
+            [[maybe_unused]] const auto lam_extd = lam_ext;
             if constexpr (FT == FrequencyType::gray) {
               ss_l = mscatter.RosselandMeanTotalScatteringCoefficient(rho_l, temp_l);
               aa_l = mopac.AbsorptionCoefficient(rho_l, temp_l, gmode2d);
@@ -822,8 +828,8 @@ TaskStatus UpdateDerivedTransportFieldsImpl(MeshData<Real> *md, const Real dt) {
               const Real tau_umin = dx_umin * (ss_u + aa_u);
               Real tau_l = dx_lz * (ss_l + aa_l);
               Real tau_u = dx_uz * (ss_u + aa_u);
-              tau_l = tau_lmin > tau_ddmc ? tau_l : 2.0 * lam_ext;
-              tau_u = tau_umin > tau_ddmc ? tau_u : 2.0 * lam_ext;
+              tau_l = tau_lmin > tau_ddmcd ? tau_l : 2.0 * lam_extd;
+              tau_u = tau_umin > tau_ddmcd ? tau_u : 2.0 * lam_extd;
 
               // set probability (face DDMC albedo); for grey mode these are copies
               vmesh(b, TE::F3, fj::ddmc_lo_face_prob(), k, j, i) =
@@ -841,7 +847,7 @@ TaskStatus UpdateDerivedTransportFieldsImpl(MeshData<Real> *md, const Real dt) {
                                           dlnud,
                                           hd,
                                           sbd,
-                                          tau_ddmc,
+                                          tau_ddmcd,
                                           dx_lmin,
                                           dx_umin,
                                           dx_lz,
