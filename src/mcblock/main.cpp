@@ -36,7 +36,7 @@ int main(int argc, char *argv[]) {
   pman.app_input->ProcessPackages = mcblock::ProcessPackages;
   mcblock::ProblemModifier(&pman);
   pman.app_input->ProblemGenerator = mcblock::ProblemGenerator;
-  pman.app_input->PostInitialization = mcblock::PostInitialization;
+  pman.app_input->PostProblemGenerator = mcblock::PostInitialization;
 
   // Call ParthenonInit to set up the mesh
   pman.ParthenonInitPackagesAndMesh();
