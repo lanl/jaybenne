@@ -18,7 +18,7 @@ project( Jaybenne
   DESCRIPTION ${jb_descript}
   LANGUAGES C CXX )
 
-set(CMAKE_CXX_STANDARD 17)
+set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_EXPORT_COMPILE_COMMANDS On)
 
 option(JAYBENNE_ENABLE_CUDA "Enable CUDA for Jaybenne and all dependencies" OFF)
