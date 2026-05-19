@@ -1,5 +1,5 @@
 //========================================================================================
-// (C) (or copyright) 2023-2025. Triad National Security, LLC. All rights reserved.
+// (C) (or copyright) 2023-2026. Triad National Security, LLC. All rights reserved.
 //
 // This program was produced under U.S. Government contract 89233218CNA000001 for Los
 // Alamos National Laboratory (LANL), which is operated by Triad National Security, LLC
@@ -55,12 +55,12 @@ typedef HOST_SCATTERING_OPACITY scattering_opacity;
 
 namespace particle {
 namespace photons {
-SWARM_VARIABLE(Real, particle.photons, time);
-SWARM_VARIABLE(Real, particle.photons, weight);
-SWARM_VARIABLE(Real, particle.photons, fraction);
-SWARM_VARIABLE(Real, particle.photons, energy);
-SWARM_VARIABLE(Real, particle.photons, v);
-SWARM_VARIABLE(int, particle.photons, ijk);
+PAR_SWARMVAR(Real, particle.photons, time);
+PAR_SWARMVAR(Real, particle.photons, weight);
+PAR_SWARMVAR(Real, particle.photons, fraction);
+PAR_SWARMVAR(Real, particle.photons, energy);
+PAR_SWARMVAR(Real, particle.photons, v);
+PAR_SWARMVAR(int, particle.photons, ijk);
 } // namespace photons
 } // namespace particle
 

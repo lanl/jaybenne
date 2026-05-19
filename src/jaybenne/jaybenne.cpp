@@ -477,8 +477,9 @@ TaskStatus UpdateDerivedTransportFieldsImpl(MeshData<Real> *md, const Real dt) {
             1.0 / (1.0 + (4.0 * emis / (rho * cv * temp)) * dt);
 
         // check if alternate time-linearization is possible in this cell
+        [[maybe_unused]] const bool use_pr = use_planck && use_rosseland;
         if constexpr (FT == FrequencyType::gray) {
-          if (use_planck && use_rosseland) {
+          if (use_pr) {
             // calculate modified fleck factor using Planck and Rosseland
             const Real ross = mopac.AbsorptionCoefficient(rho, temp, Rosseland);
             const Real plnk = mopac.AbsorptionCoefficient(rho, temp, Planck);
