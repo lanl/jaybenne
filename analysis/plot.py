@@ -23,7 +23,16 @@ import jhdf
 
 # Plot a 1D profile of a variable
 def plot_1d(
-    fig, ax, filenames, variable_name, draw_meshblocks, vmin, vmax, coords, scale
+    fig,
+    ax,
+    filenames,
+    variable_name,
+    draw_meshblocks,
+    vmin,
+    vmax,
+    data_vbnd,
+    coords,
+    scale,
 ):
 
     for filename in filenames:
@@ -38,6 +47,11 @@ def plot_1d(
         assert variable is not None, f"Variable {variable_name} does not exist!"
         if scale == "log":
             variable = np.log10(variable)
+
+        if data_vbnd:
+            for b in range(dump.NumBlocks):
+                vmin = min(vmin, np.min(variable[b, idx_k, idx_j, :]))
+                vmax = max(vmax, np.max(variable[b, idx_k, idx_j, :]))
 
         for b in range(dump.NumBlocks):
             ax.plot(dump.xc[b, idx_k, idx_j, :], variable[b, idx_k, idx_j, :])
@@ -54,6 +68,7 @@ def plot_2d(
     draw_meshblocks,
     vmin,
     vmax,
+    data_vbnd,
     coords,
     scale,
 ):
@@ -69,6 +84,11 @@ def plot_2d(
     assert variable is not None, f"Variable {variable_name} does not exist!"
     if scale == "log":
         variable = np.log10(variable)
+
+    if data_vbnd:
+        for b in range(dump.NumBlocks):
+            vmin = min(vmin, np.min(variable[b, idx_k, :, :]))
+            vmax = max(vmax, np.max(variable[b, idx_k, :, :]))
 
     for b in range(dump.NumBlocks):
         ax.pcolormesh(
@@ -162,6 +182,9 @@ if __name__ == "__main__":
         "--vmax", type=float, default=0, help="Maximum value of colorbar"
     )
     parser.add_argument(
+        "--data_vbnd", action="store_true", help="Use min/max data for colorbar"
+    )
+    parser.add_argument(
         "--scale",
         type=str,
         default="log",
@@ -187,6 +210,7 @@ if __name__ == "__main__":
             args.meshblocks,
             args.vmin,
             args.vmax,
+            args.data_vbnd,
             args.coords,
             args.scale,
         )
@@ -201,6 +225,7 @@ if __name__ == "__main__":
             args.meshblocks,
             args.vmin,
             args.vmax,
+            args.data_vbnd,
             args.coords,
             args.scale,
         )

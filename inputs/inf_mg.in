@@ -54,13 +54,17 @@ seed = 349851
 
 <mcblock>
 frequency_type = multigroup
-opacity_model = ep_bremss
-scattering_model = constant
-scattering_constant_value = 1e-1
 specific_heat = 1.0e8 # erg/K/g
 initial_density = 1.0e-5 # g cm^-3
 initial_temperature = 1.0e5 # K
 initial_radiation = thermal
+
+<mcblock/absorption>
+opacity_model = ep_bremss
+
+<mcblock/scattering>
+scattering_model = constant
+scattering_constant_value = 1e-1
 
 <parthenon/output0>
 file_type = hdf5
