@@ -43,7 +43,7 @@ struct ddmc_mg_cell_args {
 template <typename OP, typename SC>
 KOKKOS_FORCEINLINE_FUNCTION std::pair<Real, Real>
 calc_ddmc_mg_leak_numdenom(const OP &abs, const SC &sct, const ddmc_mg_leak_args &dmg,
-                           const bool &use_lo) {
+                           const ParArray1D<Real> &nu_bins, const bool &use_lo) {
 
   // define extrapolation distance (Habetler & Matkowski 1975)
   constexpr Real lam_ext = 0.7104;
@@ -57,8 +57,7 @@ calc_ddmc_mg_leak_numdenom(const OP &abs, const SC &sct, const ddmc_mg_leak_args
   for (int n = 0; n < dmg.n_nubins; ++n) {
 
     // this is the mid-point of group n in log-space:
-    // nu=exp(log(numin)+(n+0.5)*dlnu)
-    const Real ee = dmg.hd * dmg.numind * std::exp((n + 0.5) * dmg.dlnu);
+    const Real ee = dmg.hd * nu_bins(n);
     const Real dee = ee * dmg.dlnu;
 
     // evaluate face opacities at nu
@@ -106,8 +105,9 @@ calc_ddmc_mg_leak_numdenom(const OP &abs, const SC &sct, const ddmc_mg_leak_args
 template <typename OP, typename SC>
 KOKKOS_FORCEINLINE_FUNCTION Real calc_ddmc_mg_leakprob(const OP &abs, const SC &sct,
                                                        const ddmc_mg_leak_args &dmg,
+                                                       const ParArray1D<Real> &nu_bins,
                                                        const bool &use_lo) {
-  const auto leak_sum_pair = calc_ddmc_mg_leak_numdenom(abs, sct, dmg, use_lo);
+  const auto leak_sum_pair = calc_ddmc_mg_leak_numdenom(abs, sct, dmg, nu_bins, use_lo);
   if (!(leak_sum_pair.second > 0.0)) return 0.0;
   // normalize sum (so that leakage probability is an average)
   return leak_sum_pair.first / leak_sum_pair.second;
@@ -117,11 +117,12 @@ KOKKOS_FORCEINLINE_FUNCTION Real calc_ddmc_mg_leakprob(const OP &abs, const SC &
 template <typename OP, typename SC>
 KOKKOS_FORCEINLINE_FUNCTION Real sample_leakage_group(const OP &abs, const SC &sct,
                                                       const ddmc_mg_leak_args &dmg,
+                                                      const ParArray1D<Real> &nu_bins,
                                                       const bool &use_lo,
                                                       RngGen &rng_gen) {
 
   // first get CDF totals
-  const auto leak_sum_pair = calc_ddmc_mg_leak_numdenom(abs, sct, dmg, use_lo);
+  const auto leak_sum_pair = calc_ddmc_mg_leak_numdenom(abs, sct, dmg, nu_bins, use_lo);
   const Real &leak_tot_sum = leak_sum_pair.first;
   const Real &planck_tot_sum = leak_sum_pair.second;
 
@@ -139,8 +140,7 @@ KOKKOS_FORCEINLINE_FUNCTION Real sample_leakage_group(const OP &abs, const SC &s
   for (int n = 0; n < dmg.n_nubins; ++n) {
 
     // this is the mid-point of group n in log-space:
-    // nu=exp(log(numin)+(n+0.5)*dlnu)
-    const Real ee = dmg.hd * dmg.numind * std::exp((n + 0.5) * dmg.dlnu);
+    const Real ee = dmg.hd * nu_bins(n);
     const Real dee = ee * dmg.dlnu;
 
     // evaluate face opacities at nu
@@ -191,7 +191,8 @@ KOKKOS_FORCEINLINE_FUNCTION Real sample_leakage_group(const OP &abs, const SC &s
 // calculate: absorption, outscatter probability
 template <typename OP, typename SC>
 KOKKOS_FORCEINLINE_FUNCTION std::pair<Real, Real>
-calc_ddmc_mg_probs(const OP &abs, const SC &sct, const ddmc_mg_cell_args &dmgc) {
+calc_ddmc_mg_probs(const OP &abs, const SC &sct, const ddmc_mg_cell_args &dmgc,
+                   const ParArray1D<Real> &nu_bins) {
 
   // initialize unnnormalized Planck integral and probability
   Real planck_sum = 0.0;
@@ -202,8 +203,7 @@ calc_ddmc_mg_probs(const OP &abs, const SC &sct, const ddmc_mg_cell_args &dmgc) 
   for (int n = 0; n < dmgc.n_nubins; ++n) {
 
     // this is the mid-point of group n in log-space:
-    // nu=exp(log(numin)+(n+0.5)*dlnu)
-    const Real ee = dmgc.hd * dmgc.numind * std::exp((n + 0.5) * dmgc.dlnu);
+    const Real ee = dmgc.hd * nu_bins(n);
     const Real dee = ee * dmgc.dlnu;
 
     // evaluate face opacities at nu
@@ -240,9 +240,9 @@ calc_ddmc_mg_probs(const OP &abs, const SC &sct, const ddmc_mg_cell_args &dmgc) 
 // sample out-scatter IMC group
 // NOTE(MGDDMC): this routine is assuming Kirchhoff's Law for emissivity (LTE)
 template <typename OP, typename SC>
-KOKKOS_FORCEINLINE_FUNCTION Real sample_ddmc2imc_outscatter(const OP &abs, const SC &sct,
-                                                            const ddmc_mg_cell_args &dmgc,
-                                                            RngGen &rng_gen) {
+KOKKOS_FORCEINLINE_FUNCTION Real
+sample_ddmc2imc_outscatter(const OP &abs, const SC &sct, const ddmc_mg_cell_args &dmgc,
+                           const ParArray1D<Real> &nu_bins, RngGen &rng_gen) {
 
   Real scat_out_tot_sum = 0.0;
 
@@ -250,8 +250,7 @@ KOKKOS_FORCEINLINE_FUNCTION Real sample_ddmc2imc_outscatter(const OP &abs, const
   for (int n = 0; n < dmgc.n_nubins; ++n) {
 
     // this is the mid-point of group n in log-space:
-    // nu=exp(log(numin)+(n+0.5)*dlnu)
-    const Real ee = dmgc.hd * dmgc.numind * std::exp((n + 0.5) * dmgc.dlnu);
+    const Real ee = dmgc.hd * nu_bins(n);
     const Real dee = ee * dmgc.dlnu;
 
     // evaluate face opacities at nu
@@ -276,8 +275,7 @@ KOKKOS_FORCEINLINE_FUNCTION Real sample_ddmc2imc_outscatter(const OP &abs, const
   for (int n = 0; n < dmgc.n_nubins; ++n) {
 
     // this is the mid-point of group n in log-space:
-    // nu=exp(log(numin)+(n+0.5)*dlnu)
-    const Real ee = dmgc.hd * dmgc.numind * std::exp((n + 0.5) * dmgc.dlnu);
+    const Real ee = dmgc.hd * nu_bins(n);
     const Real dee = ee * dmgc.dlnu;
 
     // evaluate face opacities at nu

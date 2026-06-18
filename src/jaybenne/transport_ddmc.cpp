@@ -52,14 +52,23 @@ TaskStatus TransportPhotons_DDMC(MeshData<Real> *md, const Real t_start, const R
   Real numin = JaybenneNull<Real>();
   Real numax = JaybenneNull<Real>();
   Real dlnu = JaybenneNull<Real>();
+  std::vector<Real> nu_grid = JaybenneNull<std::vector<Real>>();
+  ParArray1D<Real> nu_bins;
   Opacity opacity;
   Scattering scattering;
   if constexpr (FT == FrequencyType::multigroup) {
     n_nubins = jb_pkg->template Param<int>("n_nubins");
     numin = jb_pkg->template Param<Real>("numin");
     numax = jb_pkg->template Param<Real>("numax");
-    // initialize (assumed) log spacing
-    dlnu = (std::log(numax) - std::log(numin)) / n_nubins;
+    // initialize (assumed) log-spaced frequency bins
+    dlnu = jb_pkg->template Param<Real>("dlnu");
+    nu_grid = jb_pkg->template Param<std::vector<Real>>("nu_grid");
+    nu_bins = ParArray1D<Real>("nu_bins", n_nubins);
+    auto nu_bins_h = nu_bins.GetHostMirror();
+    for (int n = 0; n < n_nubins; ++n) {
+      nu_bins_h(n) = nu_grid[n];
+    }
+    nu_bins.DeepCopy(nu_bins_h);
     // set opacity objects
     opacity = jb_pkg->template Param<Opacity>("opacity_d");
     scattering = jb_pkg->template Param<Scattering>("scattering_d");
@@ -110,6 +119,7 @@ TaskStatus TransportPhotons_DDMC(MeshData<Real> *md, const Real t_start, const R
           [[maybe_unused]] const auto numaxd = numax;
           [[maybe_unused]] const auto n_nubinsd = n_nubins;
           [[maybe_unused]] const auto dlnud = dlnu;
+          [[maybe_unused]] const auto nu_binsd = nu_bins;
 
           auto &coords = vmesh.GetCoordinates(b);
           const Real &dx_i = coords.template Dxc<parthenon::X1DIR>(0, 0, 0);
@@ -235,7 +245,7 @@ TaskStatus TransportPhotons_DDMC(MeshData<Real> *md, const Real t_start, const R
                                        rho,
                                        temp};
                 // clang-format on
-                const auto aagm = calc_ddmc_mg_probs(opac, scatter, dmgc);
+                const auto aagm = calc_ddmc_mg_probs(opac, scatter, dmgc, nu_binsd);
                 aa_g = aagm.first;
                 gm_g = aagm.second;
               }
@@ -316,7 +326,7 @@ TaskStatus TransportPhotons_DDMC(MeshData<Real> *md, const Real t_start, const R
                   // clang-format off
 
                   // sample particle frequency (energy units)
-                  ee = sample_leakage_group(opac, scatter, dmg, use_lo, rng_gen);
+                  ee = sample_leakage_group(opac, scatter, dmg, nu_binsd, use_lo, rng_gen);
                 }
               }
 
@@ -410,7 +420,7 @@ TaskStatus TransportPhotons_DDMC(MeshData<Real> *md, const Real t_start, const R
                                          rho,
                                          temp};
                   // clang-format on
-                  ee = sample_ddmc2imc_outscatter(opac, scatter, dmgc, rng_gen);
+                  ee = sample_ddmc2imc_outscatter(opac, scatter, dmgc, nu_bins, rng_gen);
 
                   // resample particle direction
                   sample_vol_iso_dir(psa);
@@ -421,11 +431,11 @@ TaskStatus TransportPhotons_DDMC(MeshData<Real> *md, const Real t_start, const R
                   // clang-format off
                   cell_scat_args csa{b, ip, jp, kp,
                                      ff, aa, ss,
-                                     n_nubinsd, numind, numaxd, hd};
+                                     n_nubinsd, hd};
                   // clang-format on
 
                   // invoke frequency-dependent scattering kernel
-                  scatter_kernel(vmesh, csa, psa);
+                  scatter_kernel(vmesh, csa, nu_binsd, psa);
                 }
               }
             }

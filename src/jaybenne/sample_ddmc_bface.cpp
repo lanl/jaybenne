@@ -96,7 +96,6 @@ TaskStatus SampleDDMCBlockFace(MeshData<Real> *md) {
   const Real vv = jb_pkg->template Param<Real>("speed_of_light");
 
   // get dimension indicators (for face probabilities)
-  const bool multi_d = (pm->ndim > 1);
   const bool three_d = (pm->ndim > 2);
 
   // Create SparsePack

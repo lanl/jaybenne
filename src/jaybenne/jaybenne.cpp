@@ -446,10 +446,11 @@ TaskStatus UpdateDerivedTransportFieldsImpl(MeshData<Real> *md, const Real dt) {
   MeanScattering mscattering;
   int n_nubins = -1;
   Real numin = -1.0;
-  Real numax = -1.0;
   Real dlnu = -1.0;
   Real h = -1.0;
   Real sb = -1.0;
+  std::vector<Real> nu_grid = JaybenneNull<std::vector<Real>>();
+  ParArray1D<Real> nu_bins;
 
   // get opacity average indicators
   const auto &use_planck = jbn->template Param<bool>("use_planck");
@@ -467,11 +468,17 @@ TaskStatus UpdateDerivedTransportFieldsImpl(MeshData<Real> *md, const Real dt) {
     scattering = jbn->template Param<Scattering>("scattering_d");
     n_nubins = jbn->template Param<int>("n_nubins");
     numin = jbn->template Param<Real>("numin");
-    numax = jbn->template Param<Real>("numax");
     h = jbn->template Param<Real>("planck_constant");
     sb = jbn->template Param<Real>("boltzmann");
-    // initialize (assumed) log spacing
-    dlnu = (std::log(numax) - std::log(numin)) / n_nubins;
+    // initialize (assumed) log-spaced frequency grid
+    dlnu = jbn->template Param<Real>("dlnu");
+    nu_grid = jbn->template Param<std::vector<Real>>("nu_grid");
+    nu_bins = ParArray1D<Real>("nu_bins", n_nubins);
+    auto nu_bins_h = nu_bins.GetHostMirror();
+    for (int n = 0; n < n_nubins; ++n) {
+      nu_bins_h(n) = nu_grid[n];
+    }
+    nu_bins.DeepCopy(nu_bins_h);
   }
 
   const auto &ib = md->GetBoundsI(IndexDomain::interior);
@@ -591,6 +598,7 @@ TaskStatus UpdateDerivedTransportFieldsImpl(MeshData<Real> *md, const Real dt) {
           [[maybe_unused]] const auto numind = numin;
           [[maybe_unused]] const auto dlnud = dlnu;
           [[maybe_unused]] const auto n_nubinsd = n_nubins;
+          [[maybe_unused]] const auto &nu_binsd = nu_bins;
           [[maybe_unused]] const auto hd = h;
           [[maybe_unused]] const auto sbd = sb;
           [[maybe_unused]] const auto tau_ddmcd = tau_ddmc;
@@ -641,11 +649,11 @@ TaskStatus UpdateDerivedTransportFieldsImpl(MeshData<Real> *md, const Real dt) {
 
             // integrate lo-x leakage probability
             vmesh(b, TE::F1, fj::ddmc_lo_face_prob(), k, j, i) =
-                calc_ddmc_mg_leakprob(opac, scatter, dmg, use_lo);
+                calc_ddmc_mg_leakprob(opac, scatter, dmg, nu_binsd, use_lo);
 
             // integrate hi-x leakage probability
             vmesh(b, TE::F1, fj::ddmc_hi_face_prob(), k, j, i) =
-                calc_ddmc_mg_leakprob(opac, scatter, dmg, use_hi);
+                calc_ddmc_mg_leakprob(opac, scatter, dmg, nu_binsd, use_hi);
           }
         });
 
@@ -708,6 +716,7 @@ TaskStatus UpdateDerivedTransportFieldsImpl(MeshData<Real> *md, const Real dt) {
             [[maybe_unused]] const auto numind = numin;
             [[maybe_unused]] const auto dlnud = dlnu;
             [[maybe_unused]] const auto n_nubinsd = n_nubins;
+            [[maybe_unused]] const auto &nu_binsd = nu_bins;
             [[maybe_unused]] const auto hd = h;
             [[maybe_unused]] const auto sbd = sb;
             [[maybe_unused]] const auto tau_ddmcd = tau_ddmc;
@@ -759,11 +768,11 @@ TaskStatus UpdateDerivedTransportFieldsImpl(MeshData<Real> *md, const Real dt) {
 
               // integrate lo-y leakage probability
               vmesh(b, TE::F2, fj::ddmc_lo_face_prob(), k, j, i) =
-                  calc_ddmc_mg_leakprob(opac, scatter, dmg, use_lo);
+                  calc_ddmc_mg_leakprob(opac, scatter, dmg, nu_binsd, use_lo);
 
               // integrate hi-y leakage probability
               vmesh(b, TE::F2, fj::ddmc_hi_face_prob(), k, j, i) =
-                  calc_ddmc_mg_leakprob(opac, scatter, dmg, use_hi);
+                  calc_ddmc_mg_leakprob(opac, scatter, dmg, nu_binsd, use_hi);
             }
           });
     }
@@ -827,6 +836,7 @@ TaskStatus UpdateDerivedTransportFieldsImpl(MeshData<Real> *md, const Real dt) {
             [[maybe_unused]] const auto numind = numin;
             [[maybe_unused]] const auto dlnud = dlnu;
             [[maybe_unused]] const auto n_nubinsd = n_nubins;
+            [[maybe_unused]] const auto &nu_binsd = nu_bins;
             [[maybe_unused]] const auto hd = h;
             [[maybe_unused]] const auto sbd = sb;
             [[maybe_unused]] const auto tau_ddmcd = tau_ddmc;
@@ -878,11 +888,11 @@ TaskStatus UpdateDerivedTransportFieldsImpl(MeshData<Real> *md, const Real dt) {
 
               // integrate lo-z leakage probability
               vmesh(b, TE::F3, fj::ddmc_lo_face_prob(), k, j, i) =
-                  calc_ddmc_mg_leakprob(opac, scatter, dmg, use_lo);
+                  calc_ddmc_mg_leakprob(opac, scatter, dmg, nu_binsd, use_lo);
 
               // integrate hi-z leakage probability
               vmesh(b, TE::F3, fj::ddmc_hi_face_prob(), k, j, i) =
-                  calc_ddmc_mg_leakprob(opac, scatter, dmg, use_hi);
+                  calc_ddmc_mg_leakprob(opac, scatter, dmg, nu_bins, use_hi);
             }
           });
     }

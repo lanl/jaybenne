@@ -27,8 +27,6 @@ struct cell_scat_args {
   const Real &ss; // scattering opacity (1/length)
   // frequency data
   const int &n_nubinsd; // number of frequency groups
-  const Real &numind;   // mininmum frequency
-  const Real &numaxd;   // maximum frequency
   const Real &hd;       // Planck constant
 };
 struct ptcl_scat_args {
@@ -57,6 +55,7 @@ void sample_vol_iso_dir(ptcl_scat_args sa) {
 //! TODO(BRR): template on scattering kernel type?
 template <typename T>
 KOKKOS_FORCEINLINE_FUNCTION void scatter_kernel(const T &vmesh, cell_scat_args csa,
+                                                const ParArray1D<Real> &nu_bins,
                                                 ptcl_scat_args psa) {
   namespace fj = field::jaybenne;
 
@@ -75,11 +74,9 @@ KOKKOS_FORCEINLINE_FUNCTION void scatter_kernel(const T &vmesh, cell_scat_args c
         break;
       }
     }
-    const Real dlnu = (std::log(csa.numaxd) - std::log(csa.numind)) / csa.n_nubinsd;
-    const Real nu = csa.numind * std::exp((n + 0.5) * dlnu);
 
     // reset particle frequency
-    psa.ee = csa.hd * nu;
+    psa.ee = csa.hd * nu_bins(n);
   }
 }
 
