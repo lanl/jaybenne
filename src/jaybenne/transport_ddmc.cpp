@@ -49,8 +49,6 @@ TaskStatus TransportPhotons_DDMC(MeshData<Real> *md, const Real t_start, const R
   const Real h = jb_pkg->template Param<Real>("planck_constant");
   const Real sb = jb_pkg->template Param<Real>("boltzmann");
   int n_nubins = JaybenneNull<int>();
-  Real numin = JaybenneNull<Real>();
-  Real numax = JaybenneNull<Real>();
   Real dlnu = JaybenneNull<Real>();
   std::vector<Real> nu_grid = JaybenneNull<std::vector<Real>>();
   ParArray1D<Real> nu_bins;
@@ -58,8 +56,6 @@ TaskStatus TransportPhotons_DDMC(MeshData<Real> *md, const Real t_start, const R
   Scattering scattering;
   if constexpr (FT == FrequencyType::multigroup) {
     n_nubins = jb_pkg->template Param<int>("n_nubins");
-    numin = jb_pkg->template Param<Real>("numin");
-    numax = jb_pkg->template Param<Real>("numax");
     // initialize (assumed) log-spaced frequency bins
     dlnu = jb_pkg->template Param<Real>("dlnu");
     nu_grid = jb_pkg->template Param<std::vector<Real>>("nu_grid");
@@ -115,8 +111,6 @@ TaskStatus TransportPhotons_DDMC(MeshData<Real> *md, const Real t_start, const R
           // frequency data, needed for multigroup
           [[maybe_unused]] const auto hd = h;
           [[maybe_unused]] const auto sbd = sb;
-          [[maybe_unused]] const auto numind = numin;
-          [[maybe_unused]] const auto numaxd = numax;
           [[maybe_unused]] const auto n_nubinsd = n_nubins;
           [[maybe_unused]] const auto dlnud = dlnu;
           [[maybe_unused]] const auto nu_binsd = nu_bins;
@@ -236,7 +230,6 @@ TaskStatus TransportPhotons_DDMC(MeshData<Real> *md, const Real t_start, const R
               if constexpr (FT == FrequencyType::multigroup) {
                 // clang-format off
                 ddmc_mg_cell_args dmgc{n_nubinsd,
-                                       numind,
                                        dlnud,
                                        hd,
                                        sbd,
@@ -310,7 +303,6 @@ TaskStatus TransportPhotons_DDMC(MeshData<Real> *md, const Real t_start, const R
 
                   // clang-format off
                   const ddmc_mg_leak_args dmg{n_nubinsd,
-                                              numind,
                                               dlnud,
                                               hd,
                                               sbd,
@@ -411,7 +403,6 @@ TaskStatus TransportPhotons_DDMC(MeshData<Real> *md, const Real t_start, const R
                 if (is_ddmc_step) {
                   // clang-format off
                   ddmc_mg_cell_args dmgc{n_nubinsd,
-                                         numind,
                                          dlnud,
                                          hd,
                                          sbd,

@@ -11,7 +11,6 @@ namespace jaybenne {
 // helper struct to encapsulate data needed to integrate DDMC probabilities over groups
 struct ddmc_mg_leak_args {
   const int &n_nubins;  // number of frequency groups (or bins)
-  const Real &numind;   // minimum frequency
   const Real &dlnu;     // log-spacing of frequency groups
   const Real &hd;       // Planck constant
   const Real &sbd;      // Stefan-Boltzmann constant
@@ -29,7 +28,6 @@ struct ddmc_mg_leak_args {
 // helper struct for in-cell MG DDMC processes
 struct ddmc_mg_cell_args {
   const int &n_nubins;  // number of frequency groups (or bins)
-  const Real &numind;   // minimum frequency
   const Real &dlnu;     // log-spacing of frequency groups
   const Real &hd;       // Planck constant
   const Real &sbd;      // Stefan-Boltzmann constant

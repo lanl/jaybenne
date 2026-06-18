@@ -41,8 +41,6 @@ TaskStatus TransportPhotons(MeshData<Real> *md, const Real t_start, const Real d
   Opacity opacity;
   Scattering scattering;
   int n_nubins = JaybenneNull<int>();
-  Real numin = JaybenneNull<Real>();
-  Real numax = JaybenneNull<Real>();
   Real dlnu = JaybenneNull<Real>();
   std::vector<Real> nu_grid = JaybenneNull<std::vector<Real>>();
   ParArray1D<Real> nu_bins;
@@ -50,8 +48,6 @@ TaskStatus TransportPhotons(MeshData<Real> *md, const Real t_start, const Real d
     opacity = jb_pkg->template Param<Opacity>("opacity_d");
     scattering = jb_pkg->template Param<Scattering>("scattering_d");
     n_nubins = jb_pkg->template Param<int>("n_nubins");
-    numin = jb_pkg->template Param<Real>("numin");
-    numax = jb_pkg->template Param<Real>("numax");
     // initialize (assumed) log-spaced frequency bins
     dlnu = jb_pkg->template Param<Real>("dlnu");
     nu_grid = jb_pkg->template Param<std::vector<Real>>("nu_grid");
@@ -102,8 +98,6 @@ TaskStatus TransportPhotons(MeshData<Real> *md, const Real t_start, const Real d
 
           // frequency data, needed for multigroup
           [[maybe_unused]] const auto hd = h;
-          [[maybe_unused]] const auto numind = numin;
-          [[maybe_unused]] const auto numaxd = numax;
           [[maybe_unused]] const auto n_nubinsd = n_nubins;
           [[maybe_unused]] const auto dlnud = dlnu;
           [[maybe_unused]] const auto nu_binsd = nu_bins;

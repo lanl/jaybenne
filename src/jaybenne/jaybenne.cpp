@@ -374,17 +374,17 @@ std::shared_ptr<StateDescriptor> Initialize(ParameterInput *pin, Opacity &opacit
   // Frequency discretization
   auto time = units.time;
   Real numin = pin->GetReal(block_name, "numin"); // in Hz
-  pkg->AddParam<>("numin", numin * time);         // in code units
   Real numax = pin->GetReal(block_name, "numax"); // in Hz
-  pkg->AddParam<>("numax", numax * time);         // in code units
   int n_nubins = pin->GetInteger(block_name, "n_nubins");
   pkg->AddParam<>("n_nubins", n_nubins);
+
+  // assume units.time = [s/code time] = [code freq/Hz]
+  numin *= time; // in code units
+  numax *= time; // in code units
 
   // Construct and store frequency grid
   // NOTE: these are group interior points, not edges
   std::vector<Real> nu_grid(n_nubins, 0.0);
-  numin *= time;
-  numax *= time;
   // assume uniform log-spacing, grid is midpoints in log-space
   const Real dlnu = (std::log(numax) - std::log(numin)) / n_nubins;
   for (int n = 0; n < n_nubins; ++n) {
@@ -445,7 +445,6 @@ TaskStatus UpdateDerivedTransportFieldsImpl(MeshData<Real> *md, const Real dt) {
   MeanOpacity mopacity;
   MeanScattering mscattering;
   int n_nubins = -1;
-  Real numin = -1.0;
   Real dlnu = -1.0;
   Real h = -1.0;
   Real sb = -1.0;
@@ -467,7 +466,6 @@ TaskStatus UpdateDerivedTransportFieldsImpl(MeshData<Real> *md, const Real dt) {
     opacity = jbn->template Param<Opacity>("opacity_d");
     scattering = jbn->template Param<Scattering>("scattering_d");
     n_nubins = jbn->template Param<int>("n_nubins");
-    numin = jbn->template Param<Real>("numin");
     h = jbn->template Param<Real>("planck_constant");
     sb = jbn->template Param<Real>("boltzmann");
     // initialize (assumed) log-spaced frequency grid
@@ -595,7 +593,6 @@ TaskStatus UpdateDerivedTransportFieldsImpl(MeshData<Real> *md, const Real dt) {
           [[maybe_unused]] auto mscatter = mscattering;
           [[maybe_unused]] auto opac = opacity;
           [[maybe_unused]] auto scatter = scattering;
-          [[maybe_unused]] const auto numind = numin;
           [[maybe_unused]] const auto dlnud = dlnu;
           [[maybe_unused]] const auto n_nubinsd = n_nubins;
           [[maybe_unused]] const auto &nu_binsd = nu_bins;
@@ -628,7 +625,6 @@ TaskStatus UpdateDerivedTransportFieldsImpl(MeshData<Real> *md, const Real dt) {
             // create DDMC MG leakage data helper argument (defined in ddmc_mg_utils.hpp)
             // clang-format off
             const ddmc_mg_leak_args dmg{n_nubinsd,
-                                        numind,
                                         dlnud,
                                         hd,
                                         sbd,
@@ -713,7 +709,6 @@ TaskStatus UpdateDerivedTransportFieldsImpl(MeshData<Real> *md, const Real dt) {
             [[maybe_unused]] auto mscatter = mscattering;
             [[maybe_unused]] auto opac = opacity;
             [[maybe_unused]] auto scatter = scattering;
-            [[maybe_unused]] const auto numind = numin;
             [[maybe_unused]] const auto dlnud = dlnu;
             [[maybe_unused]] const auto n_nubinsd = n_nubins;
             [[maybe_unused]] const auto &nu_binsd = nu_bins;
@@ -747,7 +742,6 @@ TaskStatus UpdateDerivedTransportFieldsImpl(MeshData<Real> *md, const Real dt) {
               // ddmc_mg_utils.hpp)
               // clang-format off
               const ddmc_mg_leak_args dmg{n_nubins,
-                                          numind,
                                           dlnud,
                                           hd,
                                           sbd,
@@ -833,7 +827,6 @@ TaskStatus UpdateDerivedTransportFieldsImpl(MeshData<Real> *md, const Real dt) {
             [[maybe_unused]] auto mscatter = mscattering;
             [[maybe_unused]] auto opac = opacity;
             [[maybe_unused]] auto scatter = scattering;
-            [[maybe_unused]] const auto numind = numin;
             [[maybe_unused]] const auto dlnud = dlnu;
             [[maybe_unused]] const auto n_nubinsd = n_nubins;
             [[maybe_unused]] const auto &nu_binsd = nu_bins;
@@ -867,7 +860,6 @@ TaskStatus UpdateDerivedTransportFieldsImpl(MeshData<Real> *md, const Real dt) {
               // ddmc_mg_utils.hpp)
               // clang-format off
               const ddmc_mg_leak_args dmg{n_nubins,
-                                          numind,
                                           dlnud,
                                           hd,
                                           sbd,
