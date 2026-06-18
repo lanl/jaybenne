@@ -380,6 +380,20 @@ std::shared_ptr<StateDescriptor> Initialize(ParameterInput *pin, Opacity &opacit
   int n_nubins = pin->GetInteger(block_name, "n_nubins");
   pkg->AddParam<>("n_nubins", n_nubins);
 
+  // Construct and store frequency grid
+  // NOTE: these are group interior points, not edges
+  std::vector<Real> nu_grid(n_nubins, 0.0);
+  numin *= time;
+  numax *= time;
+  // assume uniform log-spacing, grid is midpoints in log-space
+  const Real dlnu = (std::log(numax) - std::log(numin)) / n_nubins;
+  for (int n = 0; n < n_nubins; ++n) {
+    nu_grid[n] = numin * std::exp((n + 0.5) * dlnu);
+  }
+  // store the grid in the parameter input
+  pkg->AddParam<>("dlnu", dlnu);
+  pkg->AddParam<>("nu_grid", nu_grid);
+
   pkg->AddParam<>("frequency_type", FrequencyType::multigroup);
 
   // Emission CDF

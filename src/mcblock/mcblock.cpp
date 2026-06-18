@@ -145,13 +145,24 @@ std::shared_ptr<StateDescriptor> Initialize(ParameterInput *pin) {
           singularity::photons::Gray(kappa), time_scale, mass_scale, length_scale,
           temperature_scale);
     } else if (abs_model == "powerlaw") {
-      Real kappa0 = pin->GetReal("mcblock/absorption", "kappa0");
-      Real rho_exp = pin->GetReal("mcblock/absorption", "rho_exp");
-      Real temp_exp = pin->GetReal("mcblock/absorption", "temp_exp");
-      Real nu_exp = pin->GetReal("mcblock/absorption", "nu_exp");
-      Real nu_ref = pin->GetReal("mcblock/absorption", "nu_ref");
+      // NOTE: reference values (ref) and offsets (off) must always be in cgs units
+      const Real kappa0 = pin->GetReal("mcblock/absorption", "kappa0");
+      const Real rho_exp = pin->GetReal("mcblock/absorption", "rho_exp");
+      const Real temp_exp = pin->GetReal("mcblock/absorption", "temp_exp");
+      const Real nu_exp = pin->GetReal("mcblock/absorption", "nu_exp");
+      const Real nu_ref = pin->GetReal("mcblock/absorption", "nu_ref");
+      const Real nu_off = pin->GetReal("mcblock/absorption", "nu_off");
+      const Real rho_ref = pin->GetReal("mcblock/absorption", "rho_ref");
+      const Real rho_off = pin->GetReal("mcblock/absorption", "rho_off");
+      const Real temp_ref = pin->GetReal("mcblock/absorption", "temp_ref");
+      const Real temp_off = pin->GetReal("mcblock/absorption", "temp_off");
+      const bool do_stim_emit =
+          pin->GetOrAddBoolean("mcblock/absorption", "do_stim_emit", false);
+      // const bool do_stim_emit = pin->Get();
       opacity = singularity::photons::NonCGSUnits<singularity::photons::PowerLaw>(
-          singularity::photons::PowerLaw(kappa0, rho_exp, temp_exp, nu_exp, nu_ref),
+          singularity::photons::PowerLaw(kappa0, rho_exp, temp_exp, nu_exp, nu_ref,
+                                         nu_off, rho_ref, rho_off, temp_ref, temp_off,
+                                         do_stim_emit),
           time_scale, mass_scale, length_scale, temperature_scale);
     } else if (abs_model == "ep_bremss") {
       opacity = singularity::photons::NonCGSUnits<singularity::photons::EPBremss>(
@@ -202,13 +213,20 @@ std::shared_ptr<StateDescriptor> Initialize(ParameterInput *pin) {
           singularity::photons::GrayS(kappa_s, apm), time_scale, mass_scale, length_scale,
           temperature_scale);
     } else if (sct_model == "powerlaw") {
-      Real kappa0 = pin->GetReal("mcblock/scattering", "kappa0");
-      Real rho_exp = pin->GetReal("mcblock/scattering", "rho_exp");
-      Real temp_exp = pin->GetReal("mcblock/scattering", "temp_exp");
-      Real nu_exp = pin->GetReal("mcblock/scattering", "nu_exp");
-      Real nu_ref = pin->GetReal("mcblock/scattering", "nu_ref");
+      // NOTE: reference values (ref) and offsets (off) must always be in cgs units
+      const Real kappa0 = pin->GetReal("mcblock/scattering", "kappa0");
+      const Real rho_exp = pin->GetReal("mcblock/scattering", "rho_exp");
+      const Real temp_exp = pin->GetReal("mcblock/scattering", "temp_exp");
+      const Real nu_exp = pin->GetReal("mcblock/scattering", "nu_exp");
+      const Real nu_ref = pin->GetReal("mcblock/scattering", "nu_ref");
+      const Real nu_off = pin->GetReal("mcblock/scattering", "nu_off");
+      const Real rho_ref = pin->GetReal("mcblock/scattering", "rho_ref");
+      const Real rho_off = pin->GetReal("mcblock/scattering", "rho_off");
+      const Real temp_ref = pin->GetReal("mcblock/scattering", "temp_ref");
+      const Real temp_off = pin->GetReal("mcblock/scattering", "temp_off");
       scattering = singularity::photons::NonCGSUnitsS<singularity::photons::PowerLawS>(
-          singularity::photons::PowerLawS(kappa0, rho_exp, temp_exp, nu_exp, nu_ref),
+          singularity::photons::PowerLawS(kappa0, rho_exp, temp_exp, nu_exp, nu_ref,
+                                          nu_off, rho_ref, rho_off, temp_ref, temp_off),
           time_scale, mass_scale, length_scale, temperature_scale);
     } else {
       PARTHENON_FAIL("Only none or constant scattering models supported!");
