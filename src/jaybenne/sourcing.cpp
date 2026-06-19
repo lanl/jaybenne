@@ -83,6 +83,7 @@ TaskStatus SourcePhotons(T *md, const Real t_start, const Real dt) {
   const Real &emit_temp_th = jb_pkg->template Param<Real>("emit_temp_threshold");
   const Real &vv = jb_pkg->template Param<Real>("speed_of_light");
   const Real &sb = jb_pkg->template Param<Real>("stefan_boltzmann");
+  const Real &kbolt = jb_pkg->template Param<Real>("boltzmann");
 
   // Create pack
   static auto desc =
@@ -164,6 +165,7 @@ TaskStatus SourcePhotons(T *md, const Real t_start, const Real dt) {
               Real erad = JaybenneNull<Real>();
               if constexpr (ST == SourceType::thermal) {
                 erad = (4.0 * sbd / vvd) * std::pow(temp, 4.0) * dv;
+                // TODO: add multigroup thermal mode
               } else if constexpr (ST == SourceType::emission) {
                 Real emis = JaybenneNull<Real>();
                 if constexpr (FT == FrequencyType::gray) {
@@ -266,7 +268,7 @@ TaskStatus SourcePhotons(T *md, const Real t_start, const Real dt) {
         const Real y_min = coords.template Xc<parthenon::X2DIR>(jb.s) - 0.5 * dx_j;
         const Real z_min = coords.template Xc<parthenon::X3DIR>(kb.s) - 0.5 * dx_k;
         const int cell_idx_1d = (k - kb.s) * (nx1 * nx2) + (j - jb.s) * nx1 + (i - ib.s);
-        [[maybe_unused]] const auto &sbd = sb;
+        [[maybe_unused]] const auto &kboltd = kbolt;
         [[maybe_unused]] const auto &dtd = dt;
         [[maybe_unused]] const auto &t_startd = t_start;
         [[maybe_unused]] const auto hd = h;
@@ -311,17 +313,17 @@ TaskStatus SourcePhotons(T *md, const Real t_start, const Real dt) {
           const Real &sie = vmesh(b, fjh::sie(), k, j, i);
           const Real temp = eos.TemperatureFromDensityInternalEnergy(rho, sie);
           if constexpr (FT == FrequencyType::gray) {
-            ppack_r(b, ph::energy(), n) = sample_Planck_energy(rng_gen, sbd, temp);
+            ppack_r(b, ph::energy(), n) = sample_Planck_energy(rng_gen, kboltd, temp);
           } else if constexpr (FT == FrequencyType::multigroup) {
             // Sample energy (particle frequency) from CDF
             const Real rand = rng_gen.drand();
-            int n;
-            for (n = 0; n < n_nubinsd; n++) {
-              if (vmesh(b, fj::emission_cdf(n), k, j, i) >= rand) {
+            int g;
+            for (g = 0; g < n_nubinsd; ++g) {
+              if (vmesh(b, fj::emission_cdf(g), k, j, i) >= rand) {
                 break;
               }
             }
-            ppack_r(b, ph::energy(), n) = hd * nu_binsd(n);
+            ppack_r(b, ph::energy(), n) = hd * nu_binsd(g);
           }
 
           if constexpr (ST == SourceType::emission) {

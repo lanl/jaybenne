@@ -151,11 +151,11 @@ std::shared_ptr<StateDescriptor> Initialize(ParameterInput *pin) {
       const Real temp_exp = pin->GetReal("mcblock/absorption", "temp_exp");
       const Real nu_exp = pin->GetReal("mcblock/absorption", "nu_exp");
       const Real nu_ref = pin->GetReal("mcblock/absorption", "nu_ref");
-      const Real nu_off = pin->GetReal("mcblock/absorption", "nu_off");
+      const Real nu_off = pin->GetOrAddReal("mcblock/absorption", "nu_off", 0.0);
       const Real rho_ref = pin->GetReal("mcblock/absorption", "rho_ref");
-      const Real rho_off = pin->GetReal("mcblock/absorption", "rho_off");
+      const Real rho_off = pin->GetOrAddReal("mcblock/absorption", "rho_off", 0.0);
       const Real temp_ref = pin->GetReal("mcblock/absorption", "temp_ref");
-      const Real temp_off = pin->GetReal("mcblock/absorption", "temp_off");
+      const Real temp_off = pin->GetOrAddReal("mcblock/absorption", "temp_off", 0.0);
       const bool do_stim_emit =
           pin->GetOrAddBoolean("mcblock/absorption", "do_stim_emit", false);
       // const bool do_stim_emit = pin->Get();
@@ -219,11 +219,11 @@ std::shared_ptr<StateDescriptor> Initialize(ParameterInput *pin) {
       const Real temp_exp = pin->GetReal("mcblock/scattering", "temp_exp");
       const Real nu_exp = pin->GetReal("mcblock/scattering", "nu_exp");
       const Real nu_ref = pin->GetReal("mcblock/scattering", "nu_ref");
-      const Real nu_off = pin->GetReal("mcblock/scattering", "nu_off");
+      const Real nu_off = pin->GetOrAddReal("mcblock/scattering", "nu_off", 0.0);
       const Real rho_ref = pin->GetReal("mcblock/scattering", "rho_ref");
-      const Real rho_off = pin->GetReal("mcblock/scattering", "rho_off");
+      const Real rho_off = pin->GetOrAddReal("mcblock/scattering", "rho_off", 0.0);
       const Real temp_ref = pin->GetReal("mcblock/scattering", "temp_ref");
-      const Real temp_off = pin->GetReal("mcblock/scattering", "temp_off");
+      const Real temp_off = pin->GetOrAddReal("mcblock/scattering", "temp_off", 0.0);
       scattering = singularity::photons::NonCGSUnitsS<singularity::photons::PowerLawS>(
           singularity::photons::PowerLawS(kappa0, rho_exp, temp_exp, nu_exp, nu_ref,
                                           nu_off, rho_ref, rho_off, temp_ref, temp_off),

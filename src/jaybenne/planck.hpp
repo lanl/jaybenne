@@ -42,7 +42,7 @@ Real midpoint_Planck(const Real &temp, const Real &nu, const Real &dnu) {
 //!        rng_gen: RNG pool
 //!        T: distribution temperature
 KOKKOS_FORCEINLINE_FUNCTION
-Real sample_Planck_energy(RngGen &rng_gen, const Real &sb, const Real &temp) {
+Real sample_Planck_energy(RngGen &rng_gen, const Real &kbolt, const Real &temp) {
   // Sampling method from Everett & Cashwell 1972
   const Real xi0 = rng_gen.drand();
   const Real rhs = xi0 * std::pow(M_PI, 4.0) / 90.0;
@@ -64,7 +64,7 @@ Real sample_Planck_energy(RngGen &rng_gen, const Real &sb, const Real &temp) {
   const Real xi2 = rng_gen.drand();
   const Real xi3 = rng_gen.drand();
   const Real xi4 = rng_gen.drand();
-  return -(1.0 / ll) * std::log(xi1 * xi2 * xi3 * xi4) * sb * temp;
+  return -(1.0 / ll) * std::log(xi1 * xi2 * xi3 * xi4) * kbolt * temp;
 }
 
 } // namespace jaybenne
