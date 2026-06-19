@@ -155,6 +155,8 @@ TaskStatus SourcePhotons(T *md, const Real t_start, const Real dt) {
               const Real temp = eos.TemperatureFromDensityInternalEnergy(rho, sie);
               [[maybe_unused]] const auto gmoded = gmode;
               [[maybe_unused]] const auto &sbd = sb;
+              [[maybe_unused]] const auto &kboltd = kbolt;
+              [[maybe_unused]] const auto hd = h;
               [[maybe_unused]] const auto &vvd = vv;
               [[maybe_unused]] const auto &dtd = dt;
               [[maybe_unused]] auto mopac = mopacity;
@@ -165,7 +167,26 @@ TaskStatus SourcePhotons(T *md, const Real t_start, const Real dt) {
               Real erad = JaybenneNull<Real>();
               if constexpr (ST == SourceType::thermal) {
                 erad = (4.0 * sbd / vvd) * std::pow(temp, 4.0) * dv;
-                // TODO: add multigroup thermal mode
+                // leverage emission_cdf for initial Planck sampling
+                if constexpr (FT == FrequencyType::multigroup) {
+                  // calculate bin width (assuming log bin width)
+                  Real ee = hd * nu_binsd(0);
+                  Real dee = dlnud * ee;
+                  vmesh(b, fj::emission_cdf(0), k, j, i) =
+                      jaybenne::midpoint_Planck(kboltd * temp, ee, dee);
+                  for (int n = 1; n < n_nubinsd; n++) {
+                    ee = hd * nu_binsd(n);
+                    dee = dlnud * ee;
+                    vmesh(b, fj::emission_cdf(n), k, j, i) =
+                        jaybenne::midpoint_Planck(kboltd * temp, ee, dee) +
+                        vmesh(b, fj::emission_cdf(n - 1), k, j, i);
+                  }
+                  for (int n = 0; n < n_nubinsd; n++) {
+                    // Normalize emission CDF
+                    vmesh(b, fj::emission_cdf(n), k, j, i) /=
+                        vmesh(b, fj::emission_cdf(n_nubinsd - 1), k, j, i);
+                  }
+                }
               } else if constexpr (ST == SourceType::emission) {
                 Real emis = JaybenneNull<Real>();
                 if constexpr (FT == FrequencyType::gray) {
@@ -184,7 +205,6 @@ TaskStatus SourcePhotons(T *md, const Real t_start, const Real dt) {
                   }
                   emis = 0.0;
                   for (int n = 0; n < n_nubinsd; n++) {
-                    const Real dnu = dlnud * nu_binsd(n);
                     // Get total emissivity
                     emis += vmesh(b, fj::emission_cdf(n), k, j, i);
                     // Normalize emission CDF
