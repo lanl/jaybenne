@@ -37,6 +37,7 @@ TaskStatus TransportPhotons(MeshData<Real> *md, const Real t_start, const Real d
   auto &resolved_pkgs = pm->resolved_packages;
   auto &jb_pkg = pm->packages.Get("jaybenne");
   const Real h = jb_pkg->template Param<Real>("planck_constant");
+  const Real hinv = 1.0 / h;
   auto &eos = jb_pkg->template Param<EOS>("eos_d");
   Opacity opacity;
   Scattering scattering;
@@ -98,6 +99,7 @@ TaskStatus TransportPhotons(MeshData<Real> *md, const Real t_start, const Real d
 
           // frequency data, needed for multigroup
           [[maybe_unused]] const auto hd = h;
+          [[maybe_unused]] const auto hinvd = hinv;
           [[maybe_unused]] const auto n_nubinsd = n_nubins;
           [[maybe_unused]] const auto dlnud = dlnu;
           [[maybe_unused]] const auto nu_binsd = nu_bins;
@@ -164,8 +166,8 @@ TaskStatus TransportPhotons(MeshData<Real> *md, const Real t_start, const Real d
               const Real &rho = vmesh(b, fjh::density(), kp, jp, ip);
               const Real &sie = vmesh(b, fjh::sie(), kp, jp, ip);
               const Real temp = eost.TemperatureFromDensityInternalEnergy(rho, sie);
-              ss = scatter.TotalScatteringCoefficient(rho, temp, ee);
-              aa = opac.AbsorptionCoefficient(rho, temp, ee);
+              ss = scatter.TotalScatteringCoefficient(rho, temp, hinvd * ee);
+              aa = opac.AbsorptionCoefficient(rho, temp, hinvd * ee);
             }
 
             // reset collision indicators

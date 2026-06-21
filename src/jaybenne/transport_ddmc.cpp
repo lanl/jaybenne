@@ -47,6 +47,7 @@ TaskStatus TransportPhotons_DDMC(MeshData<Real> *md, const Real t_start, const R
 
   // data needed for multigroup frequency sampling
   const Real h = jb_pkg->template Param<Real>("planck_constant");
+  const Real hinv = 1.0 / h;
   const Real sb = jb_pkg->template Param<Real>("boltzmann");
   int n_nubins = JaybenneNull<int>();
   Real dlnu = JaybenneNull<Real>();
@@ -110,6 +111,7 @@ TaskStatus TransportPhotons_DDMC(MeshData<Real> *md, const Real t_start, const R
 
           // frequency data, needed for multigroup
           [[maybe_unused]] const auto hd = h;
+          [[maybe_unused]] const auto hinvd = hinv;
           [[maybe_unused]] const auto sbd = sb;
           [[maybe_unused]] const auto n_nubinsd = n_nubins;
           [[maybe_unused]] const auto dlnud = dlnu;
@@ -179,8 +181,8 @@ TaskStatus TransportPhotons_DDMC(MeshData<Real> *md, const Real t_start, const R
               rho = vmesh(b, fjh::density(), kp, jp, ip);
               const Real &sie = vmesh(b, fjh::sie(), kp, jp, ip);
               temp = eost.TemperatureFromDensityInternalEnergy(rho, sie);
-              ss = scatter.TotalScatteringCoefficient(rho, temp, ee);
-              aa = opac.AbsorptionCoefficient(rho, temp, ee);
+              ss = scatter.TotalScatteringCoefficient(rho, temp, hinvd * ee);
+              aa = opac.AbsorptionCoefficient(rho, temp, hinvd * ee);
             }
 
             // reset collision indicators
@@ -193,6 +195,10 @@ TaskStatus TransportPhotons_DDMC(MeshData<Real> *md, const Real t_start, const R
             Real e_abs = 0.0;
 
             if (is_ddmc_step) {
+
+              // sample if particle is undergoing an elastic event
+              const bool is_elastic = rng_gen.drand() > aa / (ss + aa);
+
               // Update cell of particle
               swarm_d.Xtoijk(x, y, z, ip, jp, kp);
 
@@ -204,20 +210,35 @@ TaskStatus TransportPhotons_DDMC(MeshData<Real> *md, const Real t_start, const R
               const Real zl = coords.template Xc<parthenon::X3DIR>(kp) - 0.5 * dx_k;
               const Real zu = coords.template Xc<parthenon::X3DIR>(kp) + 0.5 * dx_k;
 
-              // get face probabilities
-              const Real &Px_l = vmesh(b, TE::F1, fj::ddmc_hi_face_prob(), kp, jp, ip);
-              const Real &Px_u =
-                  vmesh(b, TE::F1, fj::ddmc_lo_face_prob(), kp, jp, ip + 1);
-              const Real &Py_l =
-                  multi_d ? vmesh(b, TE::F2, fj::ddmc_hi_face_prob(), kp, jp, ip) : 0.0;
-              const Real &Py_u =
-                  multi_d ? vmesh(b, TE::F2, fj::ddmc_lo_face_prob(), kp, jp + 1, ip)
+              // get face probabilities, if no absorption, use per-group values
+              const Real Px_l =
+                  is_elastic ? 1.0 / (3.0 * ss * dx_i)
+                             : vmesh(b, TE::F1, fj::ddmc_hi_face_prob(), kp, jp, ip);
+              const Real Px_u =
+                  is_elastic ? 1.0 / (3.0 * ss * dx_i)
+                             : vmesh(b, TE::F1, fj::ddmc_lo_face_prob(), kp, jp, ip + 1);
+              const Real Py_l =
+                  multi_d ? (is_elastic
+                                 ? 1.0 / (3.0 * ss * dx_j)
+                                 : vmesh(b, TE::F2, fj::ddmc_hi_face_prob(), kp, jp, ip))
                           : 0.0;
-              const Real &Pz_l =
-                  three_d ? vmesh(b, TE::F3, fj::ddmc_hi_face_prob(), kp, jp, ip) : 0.0;
-              const Real &Pz_u =
-                  three_d ? vmesh(b, TE::F3, fj::ddmc_lo_face_prob(), kp + 1, jp, ip)
+              const Real Py_u =
+                  multi_d
+                      ? (is_elastic
+                             ? 1.0 / (3.0 * ss * dx_j)
+                             : vmesh(b, TE::F2, fj::ddmc_lo_face_prob(), kp, jp + 1, ip))
+                      : 0.0;
+              const Real Pz_l =
+                  three_d ? (is_elastic
+                                 ? 1.0 / (3.0 * ss * dx_k)
+                                 : vmesh(b, TE::F3, fj::ddmc_hi_face_prob(), kp, jp, ip))
                           : 0.0;
+              const Real Pz_u =
+                  three_d
+                      ? (is_elastic
+                             ? 1.0 / (3.0 * ss * dx_k)
+                             : vmesh(b, TE::F3, fj::ddmc_lo_face_prob(), kp + 1, jp, ip))
+                      : 0.0;
 
               // store old cell indices (this is only needed for multigroup)
               const int ip_old = ip;
@@ -269,7 +290,8 @@ TaskStatus TransportPhotons_DDMC(MeshData<Real> *md, const Real t_start, const R
                 // This is hopefully a minor error.
 
                 // particle must have leaked if nothing else
-                if (!(is_absorbed || is_scattered || is_census || is_rejected)) {
+                if (!(is_absorbed || is_scattered || is_census || is_rejected ||
+                      is_elastic)) {
 
                   // only one index should be +/-1 of the current index
                   const int ip_u = (ip_old == ip + 1 ? ip_old : ip);

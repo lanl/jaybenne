@@ -54,15 +54,11 @@ calc_ddmc_mg_leak_numdenom(const OP &abs, const SC &sct, const ddmc_mg_leak_args
   // integrate
   for (int n = 0; n < dmg.n_nubins; ++n) {
 
-    // this is the mid-point of group n in log-space:
-    const Real ee = dmg.hd * nu_bins(n);
-    const Real dee = ee * dmg.dlnu;
-
-    // evaluate face opacities at nu
-    const Real ss_l = sct.TotalScatteringCoefficient(dmg.rho_l, dmg.temp_l, ee);
-    const Real aa_l = abs.AbsorptionCoefficient(dmg.rho_l, dmg.temp_l, ee);
-    const Real ss_u = sct.TotalScatteringCoefficient(dmg.rho_u, dmg.temp_u, ee);
-    const Real aa_u = abs.AbsorptionCoefficient(dmg.rho_u, dmg.temp_u, ee);
+    // evaluate face opacities at nu_bins(n)
+    const Real ss_l = sct.TotalScatteringCoefficient(dmg.rho_l, dmg.temp_l, nu_bins(n));
+    const Real aa_l = abs.AbsorptionCoefficient(dmg.rho_l, dmg.temp_l, nu_bins(n));
+    const Real ss_u = sct.TotalScatteringCoefficient(dmg.rho_u, dmg.temp_u, nu_bins(n));
+    const Real aa_u = abs.AbsorptionCoefficient(dmg.rho_u, dmg.temp_u, nu_bins(n));
 
     // calculate optical thicknesses from lower and upper cell
     const Real tau_lmin = dmg.dx_lmin * (ss_l + aa_l);
@@ -84,6 +80,10 @@ calc_ddmc_mg_leak_numdenom(const OP &abs, const SC &sct, const ddmc_mg_leak_args
 
       // evaluate a face temperature (note this is typically a 4-norm average)
       const Real temp_f = std::max(dmg.temp_l, dmg.temp_u);
+
+      // convert to energy units for Planck integral
+      const Real ee = dmg.hd * nu_bins(n);
+      const Real dee = ee * dmg.dlnu;
 
       // get an unnormalized, non-dimensional Planck integral over group
       const Real bg = midpoint_Planck(dmg.sbd * temp_f, ee, dee);
@@ -137,15 +137,11 @@ KOKKOS_FORCEINLINE_FUNCTION Real sample_leakage_group(const OP &abs, const SC &s
   // integrate
   for (int n = 0; n < dmg.n_nubins; ++n) {
 
-    // this is the mid-point of group n in log-space:
-    const Real ee = dmg.hd * nu_bins(n);
-    const Real dee = ee * dmg.dlnu;
-
-    // evaluate face opacities at nu
-    const Real ss_l = sct.TotalScatteringCoefficient(dmg.rho_l, dmg.temp_l, ee);
-    const Real aa_l = abs.AbsorptionCoefficient(dmg.rho_l, dmg.temp_l, ee);
-    const Real ss_u = sct.TotalScatteringCoefficient(dmg.rho_u, dmg.temp_u, ee);
-    const Real aa_u = abs.AbsorptionCoefficient(dmg.rho_u, dmg.temp_u, ee);
+    // evaluate face opacities at nu_bins(n)
+    const Real ss_l = sct.TotalScatteringCoefficient(dmg.rho_l, dmg.temp_l, nu_bins(n));
+    const Real aa_l = abs.AbsorptionCoefficient(dmg.rho_l, dmg.temp_l, nu_bins(n));
+    const Real ss_u = sct.TotalScatteringCoefficient(dmg.rho_u, dmg.temp_u, nu_bins(n));
+    const Real aa_u = abs.AbsorptionCoefficient(dmg.rho_u, dmg.temp_u, nu_bins(n));
 
     // calculate optical thicknesses from lower and upper cell
     const Real tau_lmin = dmg.dx_lmin * (ss_l + aa_l);
@@ -165,6 +161,10 @@ KOKKOS_FORCEINLINE_FUNCTION Real sample_leakage_group(const OP &abs, const SC &s
 
       // evaluate a face temperature (note this is typically a 4-norm average)
       const Real temp_f = std::max(dmg.temp_l, dmg.temp_u);
+
+      // convert to energy units for Planck integral
+      const Real ee = dmg.hd * nu_bins(n);
+      const Real dee = ee * dmg.dlnu;
 
       // get an unnormalized, non-dimensional Planck integral over group
       const Real bg = midpoint_Planck(dmg.sbd * temp_f, ee, dee);
@@ -200,13 +200,13 @@ calc_ddmc_mg_probs(const OP &abs, const SC &sct, const ddmc_mg_cell_args &dmgc,
   // integrate
   for (int n = 0; n < dmgc.n_nubins; ++n) {
 
-    // this is the mid-point of group n in log-space:
+    // evaluate face opacities at nu_bins(n)
+    const Real ss = sct.TotalScatteringCoefficient(dmgc.rho, dmgc.temp, nu_bins(n));
+    const Real aa = abs.AbsorptionCoefficient(dmgc.rho, dmgc.temp, nu_bins(n));
+
+    // convert to energy units for Planck integral
     const Real ee = dmgc.hd * nu_bins(n);
     const Real dee = ee * dmgc.dlnu;
-
-    // evaluate face opacities at nu
-    const Real ss = sct.TotalScatteringCoefficient(dmgc.rho, dmgc.temp, ee);
-    const Real aa = abs.AbsorptionCoefficient(dmgc.rho, dmgc.temp, ee);
 
     // get an unnormalized, non-dimensional Planck integral over group
     const Real bg = midpoint_Planck(dmgc.sbd * dmgc.temp, ee, dee);
@@ -247,17 +247,15 @@ sample_ddmc2imc_outscatter(const OP &abs, const SC &sct, const ddmc_mg_cell_args
   // integrate total cdf value
   for (int n = 0; n < dmgc.n_nubins; ++n) {
 
-    // this is the mid-point of group n in log-space:
-    const Real ee = dmgc.hd * nu_bins(n);
-    const Real dee = ee * dmgc.dlnu;
-
-    // evaluate face opacities at nu
-    const Real ss = sct.TotalScatteringCoefficient(dmgc.rho, dmgc.temp, ee);
-    const Real aa = abs.AbsorptionCoefficient(dmgc.rho, dmgc.temp, ee);
+    // evaluate face opacities at nu_bins(n)
+    const Real ss = sct.TotalScatteringCoefficient(dmgc.rho, dmgc.temp, nu_bins(n));
+    const Real aa = abs.AbsorptionCoefficient(dmgc.rho, dmgc.temp, nu_bins(n));
 
     // check group exclusion
     if (!(dmgc.dx_min * (ss + aa) > dmgc.tau_ddmc)) {
       // get an unnormalized, non-dimensional Planck integral over group
+      const Real ee = dmgc.hd * nu_bins(n);
+      const Real dee = ee * dmgc.dlnu;
       const Real bg = midpoint_Planck(dmgc.sbd * dmgc.temp, ee, dee);
       scat_out_tot_sum += bg * aa;
     }
@@ -272,16 +270,16 @@ sample_ddmc2imc_outscatter(const OP &abs, const SC &sct, const ddmc_mg_cell_args
   // find bin for sample
   for (int n = 0; n < dmgc.n_nubins; ++n) {
 
-    // this is the mid-point of group n in log-space:
-    const Real ee = dmgc.hd * nu_bins(n);
-    const Real dee = ee * dmgc.dlnu;
-
-    // evaluate face opacities at nu
-    const Real ss = sct.TotalScatteringCoefficient(dmgc.rho, dmgc.temp, ee);
-    const Real aa = abs.AbsorptionCoefficient(dmgc.rho, dmgc.temp, ee);
+    // evaluate face opacities at nu_bins(n)
+    const Real ss = sct.TotalScatteringCoefficient(dmgc.rho, dmgc.temp, nu_bins(n));
+    const Real aa = abs.AbsorptionCoefficient(dmgc.rho, dmgc.temp, nu_bins(n));
 
     // check group exclusion
     if (!(dmgc.dx_min * (ss + aa) > dmgc.tau_ddmc)) {
+
+      // convert to energy units for Planck integral
+      const Real ee = dmgc.hd * nu_bins(n);
+      const Real dee = ee * dmgc.dlnu;
 
       // get an unnormalized, non-dimensional Planck integral over group
       const Real bg = midpoint_Planck(dmgc.sbd * dmgc.temp, ee, dee);

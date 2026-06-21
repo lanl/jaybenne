@@ -501,10 +501,18 @@ TaskStatus UpdateDerivedTransportFieldsImpl(MeshData<Real> *md, const Real dt) {
         [[maybe_unused]] const auto gmoded = gmode;
         [[maybe_unused]] auto mopac = mopacity;
         [[maybe_unused]] auto opac = opacity;
+        [[maybe_unused]] const auto n_nubinsd = n_nubins;
+        [[maybe_unused]] const auto &nu_binsd = nu_bins;
+        [[maybe_unused]] const auto dlnud = dlnu;
         if constexpr (FT == FrequencyType::gray) {
           emis = mopac.Emissivity(rho, temp, gmoded);
         } else if constexpr (FT == FrequencyType::multigroup) {
-          emis = opac.Emissivity(rho, temp);
+          // NOTE: 'emis = opac.Emissivity(rho, temp);' may not integrate
+          emis = 0.0;
+          for (int n = 0; n < n_nubinsd; n++) {
+            const Real dnu = dlnud * nu_binsd(n);
+            emis += opac.EmissivityPerNu(rho, temp, nu_binsd(n)) * dnu;
+          }
         }
         vmesh(b, fj::fleck_factor(), k, j, i) =
             1.0 / (1.0 + (4.0 * emis / (rho * cv * temp)) * dt);
