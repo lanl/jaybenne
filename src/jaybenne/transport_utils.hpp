@@ -118,6 +118,7 @@ struct ddmc_step_args {
   bool &is_absorbed;  // indicator for absorption in the step
   bool &is_scattered; // indicator for scattering in the step
   bool &is_census;    // indicator for end of census
+  bool &is_leaked;    // indicator that leakage occurred between cells
 };
 
 KOKKOS_FORCEINLINE_FUNCTION
@@ -295,9 +296,10 @@ void ptcl_ddmc_step(ddmc_step_args dia, const double cutoff) {
     } else if (xi < an_abs + sct_out + leak_tot) {
 
       // TODO(RTW): only sample direction if adjacent cell is below tau_ddmc
+      dia.is_leaked = true;
 
-      // particle will leak to an adjacent cell
-      const Real xim = xi - an_abs;
+      // particle will leak to an adjacent cell, reduce sample to leakage prob.
+      const Real xim = xi - an_abs - sct_out;
       if (xim < leakx_l) {
         // leak in negative x/X1 direction
         dia.ip -= 1;
@@ -343,7 +345,7 @@ void ptcl_ddmc_step(ddmc_step_args dia, const double cutoff) {
         dia.y = dia.yl + 0.5 * dy;
         // sample direction
         sample_face_iso_dir(-dia.vv, dia.rng_gen, dia.vz, dia.vx, dia.vy);
-      } else if (xim <= leak_tot) {
+      } else if (xim <= leak_tot + rmin) {
         // leak in positive z/X3 direction
         dia.kp += dia.three_d;
         // update position

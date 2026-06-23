@@ -46,6 +46,9 @@ calc_ddmc_mg_leak_numdenom(const OP &abs, const SC &sct, const ddmc_mg_leak_args
   // define extrapolation distance (Habetler & Matkowski 1975)
   constexpr Real lam_ext = 0.7104;
 
+  // evaluate a face temperature for Planck evaluation
+  const Real temp_f = std::max(dmg.temp_l, dmg.temp_u);
+
   // initialize unnnormalized Planck integral and probability
   Real planck_sum = 0.0;
   Real leak_sum = 0.0;
@@ -77,9 +80,6 @@ calc_ddmc_mg_leak_numdenom(const OP &abs, const SC &sct, const ddmc_mg_leak_args
 
       // calculate per-nu-bin leakage
       const Real Pg = 2.0 / (3.0 * (mtau_l + mtau_u));
-
-      // evaluate a face temperature (note this is typically a 4-norm average)
-      const Real temp_f = std::max(dmg.temp_l, dmg.temp_u);
 
       // convert to energy units for Planck integral
       const Real ee = dmg.hd * nu_bins(n);
@@ -127,6 +127,9 @@ KOKKOS_FORCEINLINE_FUNCTION Real sample_leakage_group(const OP &abs, const SC &s
   // define extrapolation distance (Habetler & Matkowski 1975)
   constexpr Real lam_ext = 0.7104;
 
+  // evaluate a face temperature for Planck evaluation
+  const Real temp_f = std::max(dmg.temp_l, dmg.temp_u);
+
   Real leak_sum = 0.0;
   Real planck_sum = 0.0;
 
@@ -158,9 +161,6 @@ KOKKOS_FORCEINLINE_FUNCTION Real sample_leakage_group(const OP &abs, const SC &s
 
       // calculate per-nu-bin leakage
       const Real Pg = 2.0 / (3.0 * (mtau_l + mtau_u));
-
-      // evaluate a face temperature (note this is typically a 4-norm average)
-      const Real temp_f = std::max(dmg.temp_l, dmg.temp_u);
 
       // convert to energy units for Planck integral
       const Real ee = dmg.hd * nu_bins(n);
@@ -238,9 +238,9 @@ calc_ddmc_mg_probs(const OP &abs, const SC &sct, const ddmc_mg_cell_args &dmgc,
 // sample out-scatter IMC group
 // NOTE(MGDDMC): this routine is assuming Kirchhoff's Law for emissivity (LTE)
 template <typename OP, typename SC>
-KOKKOS_FORCEINLINE_FUNCTION Real
-sample_ddmc2imc_outscatter(const OP &abs, const SC &sct, const ddmc_mg_cell_args &dmgc,
-                           const ParArray1D<Real> &nu_bins, RngGen &rng_gen) {
+KOKKOS_FORCEINLINE_FUNCTION Real sample_ddmc2imc_outscatter(
+    const OP &abs, const SC &sct, const ddmc_mg_cell_args &dmgc,
+    const ParArray1D<Real> &nu_bins, RngGen &rng_gen, const bool stay_in = false) {
 
   Real scat_out_tot_sum = 0.0;
 
@@ -252,7 +252,8 @@ sample_ddmc2imc_outscatter(const OP &abs, const SC &sct, const ddmc_mg_cell_args
     const Real aa = abs.AbsorptionCoefficient(dmgc.rho, dmgc.temp, nu_bins(n));
 
     // check group exclusion
-    if (!(dmgc.dx_min * (ss + aa) > dmgc.tau_ddmc)) {
+    const bool is_ddmc_grp = dmgc.dx_min * (ss + aa) > dmgc.tau_ddmc;
+    if (stay_in ? is_ddmc_grp : !is_ddmc_grp) {
       // get an unnormalized, non-dimensional Planck integral over group
       const Real ee = dmgc.hd * nu_bins(n);
       const Real dee = ee * dmgc.dlnu;
@@ -275,7 +276,8 @@ sample_ddmc2imc_outscatter(const OP &abs, const SC &sct, const ddmc_mg_cell_args
     const Real aa = abs.AbsorptionCoefficient(dmgc.rho, dmgc.temp, nu_bins(n));
 
     // check group exclusion
-    if (!(dmgc.dx_min * (ss + aa) > dmgc.tau_ddmc)) {
+    const bool is_ddmc_grp = dmgc.dx_min * (ss + aa) > dmgc.tau_ddmc;
+    if (stay_in ? is_ddmc_grp : !is_ddmc_grp) {
 
       // convert to energy units for Planck integral
       const Real ee = dmgc.hd * nu_bins(n);

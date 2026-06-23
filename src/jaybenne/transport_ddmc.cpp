@@ -200,9 +200,12 @@ TaskStatus TransportPhotons_DDMC(MeshData<Real> *md, const Real t_start, const R
               // NOTE: this uses the fact that the number of random walks in a cell scales
               // like tau^2, and at each event the probability of an elastic scatter is ss
               // / (ss + aa).
-              const Real tau_min = dx_push * (ss + aa);
-              const bool is_elastic =
-                  (rng_gen.drand() < std::pow(ss / (ss + aa), tau_min * tau_min));
+              bool is_elastic = false;
+              if constexpr (FT == FrequencyType::multigroup) {
+                const Real tau_min = dx_push * (ss + aa);
+                is_elastic =
+                    rng_gen.drand() < std::pow(ss / (ss + aa), tau_min * tau_min);
+              }
 
               // Update cell of particle
               swarm_d.Xtoijk(x, y, z, ip, jp, kp);
@@ -254,20 +257,26 @@ TaskStatus TransportPhotons_DDMC(MeshData<Real> *md, const Real t_start, const R
               Real aa_g = aa;
               Real gm_g = 0.0;
               if constexpr (FT == FrequencyType::multigroup) {
-                // clang-format off
-                ddmc_mg_cell_args dmgc{n_nubinsd,
-                                       dlnud,
-                                       hd,
-                                       sbd,
-                                       tau_ddmc,
-                                       dx_push,
-                                       rho,
-                                       temp};
-                // clang-format on
-                const auto aagm = calc_ddmc_mg_probs(opac, scatter, dmgc, nu_binsd);
-                aa_g = aagm.first;
-                gm_g = aagm.second;
+                if (is_elastic) {
+                  aa_g = 0.0;
+                } else {
+                  // clang-format off
+                  ddmc_mg_cell_args dmgc{n_nubinsd,
+                                         dlnud,
+                                         hd,
+                                         sbd,
+                                         tau_ddmc,
+                                         dx_push,
+                                         rho,
+                                         temp};
+
+                  const auto aagm = calc_ddmc_mg_probs(opac, scatter, dmgc, nu_binsd);
+                  aa_g = aagm.first;
+                  gm_g = aagm.second;
+                }
               }
+
+              bool is_leaked = false;
 
               // create DDMC step argument list
               // clang-format off
@@ -281,7 +290,7 @@ TaskStatus TransportPhotons_DDMC(MeshData<Real> *md, const Real t_start, const R
                                   // updated by push
                                   t, x, y, z, vx, vy, vz,
                                   ip, jp, kp, ww, fraction, e_abs,
-                                  is_absorbed, is_scattered, is_census};
+                                  is_absorbed, is_scattered, is_census, is_leaked};
               // clang-format on
 
               // check for IMC-DDMC albedo rejection if particle arrived from IMC region
@@ -290,13 +299,29 @@ TaskStatus TransportPhotons_DDMC(MeshData<Real> *md, const Real t_start, const R
               if (!is_rejected) ptcl_ddmc_step(dia, cutoff);
 
               if constexpr (FT == FrequencyType::multigroup) {
+
+                if (is_census && !is_elastic) {
+                  // clang-format off
+                  ddmc_mg_cell_args dmgc{n_nubinsd,
+                                         dlnud,
+                                         hd,
+                                         sbd,
+                                         tau_ddmc,
+                                         dx_push,
+                                         rho,
+                                         temp};
+                  // clang-format on
+                  // the final argument tells it to stay in DDMC groups
+                  ee = sample_ddmc2imc_outscatter(opac, scatter, dmgc, nu_bins, rng_gen,
+                                                  true);
+                }
+
                 // NOTE: these ddmc_mg_leak_args do not use adjacent cell, so
                 // the face CDF does not sum here to ddmc_(hi|lo)_face_prob.
                 // This is hopefully a minor error.
 
                 // particle must have leaked if nothing else
-                if (!(is_absorbed || is_scattered || is_census || is_rejected ||
-                      is_elastic)) {
+                if (is_leaked && !is_elastic) {
 
                   // only one index should be +/-1 of the current index
                   const int ip_u = (ip_old == ip + 1 ? ip_old : ip);
