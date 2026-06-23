@@ -197,7 +197,12 @@ TaskStatus TransportPhotons_DDMC(MeshData<Real> *md, const Real t_start, const R
             if (is_ddmc_step) {
 
               // sample if particle is undergoing an elastic event
-              const bool is_elastic = rng_gen.drand() > aa / (ss + aa);
+              // NOTE: this uses the fact that the number of random walks in a cell scales
+              // like tau^2, and at each event the probability of an elastic scatter is ss
+              // / (ss + aa).
+              const Real tau_min = dx_push * (ss + aa);
+              const bool is_elastic =
+                  (rng_gen.drand() < std::pow(ss / (ss + aa), tau_min * tau_min));
 
               // Update cell of particle
               swarm_d.Xtoijk(x, y, z, ip, jp, kp);

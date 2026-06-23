@@ -178,8 +178,11 @@ TaskCollection RadiationStep(Mesh *pmesh, const SimTime &tm, const Real dt) {
     auto update_fluid = tl.AddTask(eval_rad, jaybenne::UpdateFluid, base.get());
 
     // Control particle population
-    auto control_pop = tl.AddTask(update_fluid, jaybenne::ControlPopulation, base.get(),
-                                  ncycle, ncycle_out);
+    // TODO: implement population control in multigroup mode
+    if (fd == FrequencyType::gray) {
+      auto control_pop = tl.AddTask(update_fluid, jaybenne::ControlPopulation, base.get(),
+                                    ncycle, ncycle_out);
+    }
 
     // TODO: Defrag particles? Verify parth swarm defrag mechanics before uncommenting
     // auto defrag_pop = tl.AddTask(control_pop, jaybenne::DefragParticles, base.get());
