@@ -30,7 +30,7 @@ modified_inputs["parthenon/mesh/nx1"] = 128
 modified_inputs["parthenon/meshblock/nx1"] = 128
 
 # -- Analytic solution
-tau = 1.000692e-7
+tau = 1.000692e-7 # = 3 * sigma_t / c
 ur0 = 7.5646e5
 shift = 0.5
 
