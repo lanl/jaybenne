@@ -15,6 +15,7 @@
 #include <limits>
 
 // Jaybenne includes
+#include "ddmc_mg_utils.hpp"
 #include "jaybenne.hpp"
 #include "jaybenne_utils.hpp"
 #include <utils/robust.hpp>
@@ -87,7 +88,8 @@ TaskCollection RadiationStep(Mesh *pmesh, const SimTime &tm, const Real dt) {
   const auto &fd = jb_pkg->template Param<FrequencyType>("frequency_type");
 
   // MeshData subsets
-  auto ddmc_field_names = std::vector<std::string>{fj::ddmc_face_prob::name()};
+  auto ddmc_field_names = std::vector<std::string>{fj::ddmc_lo_face_prob::name(),
+                                                   fj::ddmc_hi_face_prob::name()};
   auto &ddmc_reg =
       pmesh->mesh_data.AddShallow("ddmc_reg", pmesh->mesh_data.Get(), ddmc_field_names);
 
@@ -232,6 +234,7 @@ Initialize_impl(ParameterInput *pin, EOS &eos,
   pkg->AddParam<>("speed_of_light", units.c);
   pkg->AddParam<>("stefan_boltzmann", units.sb);
   pkg->AddParam<>("planck_constant", units.h);
+  pkg->AddParam<>("boltzmann", units.kb);
 
   // RNG
   bool unique_rank_seeds = pin->GetOrAddBoolean(block_name, "unique_rank_seeds", true);
@@ -324,7 +327,8 @@ Initialize_impl(ParameterInput *pin, EOS &eos,
 
   // Face-based radiation fields
   Metadata mface({Metadata::Face, Metadata::Derived, Metadata::FillGhost});
-  pkg->AddField(field::jaybenne::ddmc_face_prob::name(), mface);
+  pkg->AddField(field::jaybenne::ddmc_lo_face_prob::name(), mface);
+  pkg->AddField(field::jaybenne::ddmc_hi_face_prob::name(), mface);
 
   // Radiation timestep
   pkg->EstimateTimestepMesh = EstimateTimestepMesh;
@@ -367,17 +371,28 @@ std::shared_ptr<StateDescriptor> Initialize(ParameterInput *pin, Opacity &opacit
 
   auto pkg = Initialize_impl(pin, eos, units, block_name);
 
-  PARTHENON_REQUIRE(pkg->template Param<bool>("use_ddmc") == false,
-                    "DDMC not supported for multigroup currently!");
-
   // Frequency discretization
   auto time = units.time;
   Real numin = pin->GetReal(block_name, "numin"); // in Hz
-  pkg->AddParam<>("numin", numin * time);         // in code units
   Real numax = pin->GetReal(block_name, "numax"); // in Hz
-  pkg->AddParam<>("numax", numax * time);         // in code units
   int n_nubins = pin->GetInteger(block_name, "n_nubins");
   pkg->AddParam<>("n_nubins", n_nubins);
+
+  // assume units.time = [s/code time] = [code freq/Hz]
+  numin *= time; // in code units
+  numax *= time; // in code units
+
+  // Construct and store frequency grid
+  // NOTE: these are group interior points, not edges
+  std::vector<Real> nu_grid(n_nubins, 0.0);
+  // assume uniform log-spacing, grid is midpoints in log-space
+  const Real dlnu = (std::log(numax) - std::log(numin)) / n_nubins;
+  for (int n = 0; n < n_nubins; ++n) {
+    nu_grid[n] = numin * std::exp((n + 0.5) * dlnu);
+  }
+  // store the grid in the parameter input
+  pkg->AddParam<>("dlnu", dlnu);
+  pkg->AddParam<>("nu_grid", nu_grid);
 
   pkg->AddParam<>("frequency_type", FrequencyType::multigroup);
 
@@ -429,6 +444,12 @@ TaskStatus UpdateDerivedTransportFieldsImpl(MeshData<Real> *md, const Real dt) {
   Scattering scattering;
   MeanOpacity mopacity;
   MeanScattering mscattering;
+  int n_nubins = -1;
+  Real dlnu = -1.0;
+  Real h = -1.0;
+  Real sb = -1.0;
+  std::vector<Real> nu_grid = JaybenneNull<std::vector<Real>>();
+  ParArray1D<Real> nu_bins;
 
   // get opacity average indicators
   const auto &use_planck = jbn->template Param<bool>("use_planck");
@@ -444,6 +465,18 @@ TaskStatus UpdateDerivedTransportFieldsImpl(MeshData<Real> *md, const Real dt) {
                       "Modified Fleck factor is not compatible with multigroup!");
     opacity = jbn->template Param<Opacity>("opacity_d");
     scattering = jbn->template Param<Scattering>("scattering_d");
+    n_nubins = jbn->template Param<int>("n_nubins");
+    h = jbn->template Param<Real>("planck_constant");
+    sb = jbn->template Param<Real>("boltzmann");
+    // initialize (assumed) log-spaced frequency grid
+    dlnu = jbn->template Param<Real>("dlnu");
+    nu_grid = jbn->template Param<std::vector<Real>>("nu_grid");
+    nu_bins = ParArray1D<Real>("nu_bins", n_nubins);
+    auto nu_bins_h = nu_bins.GetHostMirror();
+    for (int n = 0; n < n_nubins; ++n) {
+      nu_bins_h(n) = nu_grid[n];
+    }
+    nu_bins.DeepCopy(nu_bins_h);
   }
 
   const auto &ib = md->GetBoundsI(IndexDomain::interior);
@@ -451,8 +484,8 @@ TaskStatus UpdateDerivedTransportFieldsImpl(MeshData<Real> *md, const Real dt) {
   const auto &kb = md->GetBoundsK(IndexDomain::interior);
 
   static auto desc =
-      MakePackDescriptor<fjh::density, fjh::sie, fj::fleck_factor, fj::ddmc_face_prob>(
-          resolved_pkgs.get());
+      MakePackDescriptor<fjh::density, fjh::sie, fj::fleck_factor, fj::ddmc_lo_face_prob,
+                         fj::ddmc_hi_face_prob>(resolved_pkgs.get());
   auto vmesh = desc.GetPack(md);
 
   parthenon::par_for(
@@ -468,10 +501,18 @@ TaskStatus UpdateDerivedTransportFieldsImpl(MeshData<Real> *md, const Real dt) {
         [[maybe_unused]] const auto gmoded = gmode;
         [[maybe_unused]] auto mopac = mopacity;
         [[maybe_unused]] auto opac = opacity;
+        [[maybe_unused]] const auto n_nubinsd = n_nubins;
+        [[maybe_unused]] const auto &nu_binsd = nu_bins;
+        [[maybe_unused]] const auto dlnud = dlnu;
         if constexpr (FT == FrequencyType::gray) {
           emis = mopac.Emissivity(rho, temp, gmoded);
         } else if constexpr (FT == FrequencyType::multigroup) {
-          emis = opac.Emissivity(rho, temp);
+          // NOTE: 'emis = opac.Emissivity(rho, temp);' may not integrate
+          emis = 0.0;
+          for (int n = 0; n < n_nubinsd; n++) {
+            const Real dnu = dlnud * nu_binsd(n);
+            emis += opac.EmissivityPerNu(rho, temp, nu_binsd(n)) * dnu;
+          }
         }
         vmesh(b, fj::fleck_factor(), k, j, i) =
             1.0 / (1.0 + (4.0 * emis / (rho * cv * temp)) * dt);
@@ -497,8 +538,6 @@ TaskStatus UpdateDerivedTransportFieldsImpl(MeshData<Real> *md, const Real dt) {
   const bool use_ddmc = jbn->template Param<bool>("use_ddmc");
   if (use_ddmc) {
 
-    PARTHENON_REQUIRE(FT == FrequencyType::gray, "DDMC only works in gray!");
-
     // use Planck for all-Planck mode in leakage coefficients too
     const OpacityAveraging gmode2 = (use_planck && !use_rosseland) ? Planck : Rosseland;
 
@@ -517,6 +556,8 @@ TaskStatus UpdateDerivedTransportFieldsImpl(MeshData<Real> *md, const Real dt) {
           // get coordinates of block
           auto &coords = vmesh.GetCoordinates(b);
           const Real &dx_i = coords.Dxc<parthenon::X1DIR>(0, 0, 0);
+          const Real &dx_j = coords.Dxc<parthenon::X2DIR>(0, 0, 0);
+          const Real &dx_k = coords.Dxc<parthenon::X3DIR>(0, 0, 0);
 
           // get current, lower, upper neighbor block levels in x-direction
           const Real rlev = static_cast<Real>(vmesh.GetLevel(b, 0, 0, 0));
@@ -527,9 +568,18 @@ TaskStatus UpdateDerivedTransportFieldsImpl(MeshData<Real> *md, const Real dt) {
                                    ? rlev
                                    : static_cast<Real>(vmesh.GetLevel(b, 0, 0, 1));
 
+          // calculate neighbor refinement scaling factors
+          const Real scle_lx = i == ib.s ? std::pow(2.0, rlev - rlev_lx) : 1.0;
+          const Real scle_ux = i == iu ? std::pow(2.0, rlev - rlev_ux) : 1.0;
+
           // calculate neighbor dx values
-          const Real dx_lx = i == ib.s ? std::pow(2.0, rlev - rlev_lx) * dx_i : dx_i;
-          const Real dx_ux = i == iu ? std::pow(2.0, rlev - rlev_ux) * dx_i : dx_i;
+          const Real dx_lx = scle_lx * dx_i;
+          const Real dx_ux = scle_ux * dx_i;
+
+          // calculate neighbor min length for min optical thickness (for threshold check)
+          const Real dx_push = std::min(dx_i, std::min(dx_j, dx_k));
+          const Real dx_lmin = scle_lx * dx_push;
+          const Real dx_umin = scle_ux * dx_push;
 
           // TODO: interpolate temperatures to evaluate face opacities?
           // (If opacity gradients are not large, maybe this is not needed)
@@ -551,27 +601,64 @@ TaskStatus UpdateDerivedTransportFieldsImpl(MeshData<Real> *md, const Real dt) {
           [[maybe_unused]] auto mscatter = mscattering;
           [[maybe_unused]] auto opac = opacity;
           [[maybe_unused]] auto scatter = scattering;
+          [[maybe_unused]] const auto dlnud = dlnu;
+          [[maybe_unused]] const auto n_nubinsd = n_nubins;
+          [[maybe_unused]] const auto &nu_binsd = nu_bins;
+          [[maybe_unused]] const auto hd = h;
+          [[maybe_unused]] const auto sbd = sb;
+          [[maybe_unused]] const auto tau_ddmcd = tau_ddmc;
+          [[maybe_unused]] const auto lam_extd = lam_ext;
           if constexpr (FT == FrequencyType::gray) {
             ss_l = mscatter.RosselandMeanTotalScatteringCoefficient(rho_l, temp_l);
             aa_l = mopac.AbsorptionCoefficient(rho_l, temp_l, gmode2d);
             ss_u = mscatter.RosselandMeanTotalScatteringCoefficient(rho_u, temp_u);
             aa_u = mopac.AbsorptionCoefficient(rho_u, temp_u, gmode2d);
+
+            // calculate optical thicknesses from lower and upper cell
+            const Real tau_lmin = dx_lmin * (ss_l + aa_l);
+            const Real tau_umin = dx_umin * (ss_u + aa_u);
+            Real tau_l = dx_lx * (ss_l + aa_l);
+            Real tau_u = dx_ux * (ss_u + aa_u);
+            tau_l = tau_lmin > tau_ddmcd ? tau_l : 2.0 * lam_extd;
+            tau_u = tau_umin > tau_ddmcd ? tau_u : 2.0 * lam_extd;
+
+            // set probability (face DDMC albedo); for grey mode these are copies
+            vmesh(b, TE::F1, fj::ddmc_lo_face_prob(), k, j, i) =
+                2.0 / (3.0 * (tau_l + tau_u));
+            vmesh(b, TE::F1, fj::ddmc_hi_face_prob(), k, j, i) =
+                2.0 / (3.0 * (tau_l + tau_u));
+
           } else if constexpr (FT == FrequencyType::multigroup) {
-            // TODO: replace 3rd argument when this routine operates in multigroup
-            ss_l = scatter.TotalScatteringCoefficient(rho_l, temp_l, 1.0);
-            aa_l = opac.AbsorptionCoefficient(rho_l, temp_l, 1.0);
-            ss_u = scatter.TotalScatteringCoefficient(rho_u, temp_u, 1.0);
-            aa_u = opac.AbsorptionCoefficient(rho_u, temp_u, 1.0);
+
+            // create DDMC MG leakage data helper argument (defined in ddmc_mg_utils.hpp)
+            // clang-format off
+            const ddmc_mg_leak_args dmg{n_nubinsd,
+                                        dlnud,
+                                        hd,
+                                        sbd,
+                                        tau_ddmcd,
+                                        dx_lmin,
+                                        dx_umin,
+                                        dx_lx,
+                                        dx_ux,
+                                        rho_l,
+                                        rho_u,
+                                        temp_l,
+                                        temp_u};
+            // clang-format on
+
+            // face side indicator
+            constexpr bool use_lo = true;
+            constexpr bool use_hi = false;
+
+            // integrate lo-x leakage probability
+            vmesh(b, TE::F1, fj::ddmc_lo_face_prob(), k, j, i) =
+                calc_ddmc_mg_leakprob(opac, scatter, dmg, nu_binsd, use_lo);
+
+            // integrate hi-x leakage probability
+            vmesh(b, TE::F1, fj::ddmc_hi_face_prob(), k, j, i) =
+                calc_ddmc_mg_leakprob(opac, scatter, dmg, nu_binsd, use_hi);
           }
-
-          // calculate optical thicknesses from lower and upper cell
-          Real tau_l = dx_lx * (ss_l + aa_l);
-          Real tau_u = dx_ux * (ss_u + aa_u);
-          tau_l = tau_l > tau_ddmc ? tau_l : 2.0 * lam_ext;
-          tau_u = tau_u > tau_ddmc ? tau_u : 2.0 * lam_ext;
-
-          // set probability (face DDMC albedo)
-          vmesh(b, TE::F1, fj::ddmc_face_prob(), k, j, i) = 2.0 / (3.0 * (tau_l + tau_u));
         });
 
     // set face probabilities in X2 direction
@@ -584,7 +671,9 @@ TaskStatus UpdateDerivedTransportFieldsImpl(MeshData<Real> *md, const Real dt) {
           ib.e, KOKKOS_LAMBDA(const int &b, const int &k, const int &j, const int &i) {
             // get coordinates of block
             auto &coords = vmesh.GetCoordinates(b);
+            const Real &dx_i = coords.Dxc<parthenon::X1DIR>(0, 0, 0);
             const Real &dx_j = coords.Dxc<parthenon::X2DIR>(0, 0, 0);
+            const Real &dx_k = coords.Dxc<parthenon::X3DIR>(0, 0, 0);
 
             // get current, lower, upper neighbor block levels in x-direction
             const Real rlev = static_cast<Real>(vmesh.GetLevel(b, 0, 0, 0));
@@ -595,9 +684,19 @@ TaskStatus UpdateDerivedTransportFieldsImpl(MeshData<Real> *md, const Real dt) {
                                      ? rlev
                                      : static_cast<Real>(vmesh.GetLevel(b, 0, 1, 0));
 
+            // calculate neighbor refinement scaling factors
+            const Real scle_ly = j == jb.s ? std::pow(2.0, rlev - rlev_ly) : 1.0;
+            const Real scle_uy = j == ju ? std::pow(2.0, rlev - rlev_uy) : 1.0;
+
             // calculate neighbor dx values
-            const Real dx_ly = j == jb.s ? std::pow(2.0, rlev - rlev_ly) * dx_j : dx_j;
-            const Real dx_uy = j == ju ? std::pow(2.0, rlev - rlev_uy) * dx_j : dx_j;
+            const Real dx_ly = scle_ly * dx_j;
+            const Real dx_uy = scle_uy * dx_j;
+
+            // calculate neighbor min length for min optical thickness (for threshold
+            // check)
+            const Real dx_push = std::min(dx_i, std::min(dx_j, dx_k));
+            const Real dx_lmin = scle_ly * dx_push;
+            const Real dx_umin = scle_uy * dx_push;
 
             // TODO: interpolate temperatures to evaluate face opacities?
             // (If opacity gradients are not large, maybe this is not needed)
@@ -618,28 +717,65 @@ TaskStatus UpdateDerivedTransportFieldsImpl(MeshData<Real> *md, const Real dt) {
             [[maybe_unused]] auto mscatter = mscattering;
             [[maybe_unused]] auto opac = opacity;
             [[maybe_unused]] auto scatter = scattering;
+            [[maybe_unused]] const auto dlnud = dlnu;
+            [[maybe_unused]] const auto n_nubinsd = n_nubins;
+            [[maybe_unused]] const auto &nu_binsd = nu_bins;
+            [[maybe_unused]] const auto hd = h;
+            [[maybe_unused]] const auto sbd = sb;
+            [[maybe_unused]] const auto tau_ddmcd = tau_ddmc;
+            [[maybe_unused]] const auto lam_extd = lam_ext;
             if constexpr (FT == FrequencyType::gray) {
               ss_l = mscatter.RosselandMeanTotalScatteringCoefficient(rho_l, temp_l);
               aa_l = mopac.AbsorptionCoefficient(rho_l, temp_l, gmode2d);
               ss_u = mscatter.RosselandMeanTotalScatteringCoefficient(rho_u, temp_u);
               aa_u = mopac.AbsorptionCoefficient(rho_u, temp_u, gmode2d);
+
+              // calculate optical thicknesses from lower and upper cell
+              const Real tau_lmin = dx_lmin * (ss_l + aa_l);
+              const Real tau_umin = dx_umin * (ss_u + aa_u);
+              Real tau_l = dx_ly * (ss_l + aa_l);
+              Real tau_u = dx_uy * (ss_u + aa_u);
+              tau_l = tau_lmin > tau_ddmcd ? tau_l : 2.0 * lam_extd;
+              tau_u = tau_umin > tau_ddmcd ? tau_u : 2.0 * lam_extd;
+
+              // set probability (face DDMC albedo); for grey mode these are copies
+              vmesh(b, TE::F2, fj::ddmc_lo_face_prob(), k, j, i) =
+                  2.0 / (3.0 * (tau_l + tau_u));
+              vmesh(b, TE::F2, fj::ddmc_hi_face_prob(), k, j, i) =
+                  2.0 / (3.0 * (tau_l + tau_u));
+
             } else if constexpr (FT == FrequencyType::multigroup) {
-              // TODO: replace 3rd argument when this routine operates in multigroup
-              ss_l = scatter.TotalScatteringCoefficient(rho_l, temp_l, 1.0);
-              aa_l = opac.AbsorptionCoefficient(rho_l, temp_l, 1.0);
-              ss_u = scatter.TotalScatteringCoefficient(rho_u, temp_u, 1.0);
-              aa_u = opac.AbsorptionCoefficient(rho_u, temp_u, 1.0);
+
+              // create DDMC MG leakage data helper argument (defined in
+              // ddmc_mg_utils.hpp)
+              // clang-format off
+              const ddmc_mg_leak_args dmg{n_nubins,
+                                          dlnud,
+                                          hd,
+                                          sbd,
+                                          tau_ddmcd,
+                                          dx_lmin,
+                                          dx_umin,
+                                          dx_ly,
+                                          dx_uy,
+                                          rho_l,
+                                          rho_u,
+                                          temp_l,
+                                          temp_u};
+              // clang-format on
+
+              // face side indicator
+              constexpr bool use_lo = true;
+              constexpr bool use_hi = false;
+
+              // integrate lo-y leakage probability
+              vmesh(b, TE::F2, fj::ddmc_lo_face_prob(), k, j, i) =
+                  calc_ddmc_mg_leakprob(opac, scatter, dmg, nu_binsd, use_lo);
+
+              // integrate hi-y leakage probability
+              vmesh(b, TE::F2, fj::ddmc_hi_face_prob(), k, j, i) =
+                  calc_ddmc_mg_leakprob(opac, scatter, dmg, nu_binsd, use_hi);
             }
-
-            // calculate optical thicknesses from lower and upper cell
-            Real tau_l = dx_ly * (ss_l + aa_l);
-            Real tau_u = dx_uy * (ss_u + aa_u);
-            tau_l = tau_l > tau_ddmc ? tau_l : 2.0 * lam_ext;
-            tau_u = tau_u > tau_ddmc ? tau_u : 2.0 * lam_ext;
-
-            // set probability (face DDMC albedo)
-            vmesh(b, TE::F2, fj::ddmc_face_prob(), k, j, i) =
-                2.0 / (3.0 * (tau_l + tau_u));
           });
     }
 
@@ -653,6 +789,8 @@ TaskStatus UpdateDerivedTransportFieldsImpl(MeshData<Real> *md, const Real dt) {
           ib.e, KOKKOS_LAMBDA(const int &b, const int &k, const int &j, const int &i) {
             // get coordinates of block
             auto &coords = vmesh.GetCoordinates(b);
+            const Real &dx_i = coords.Dxc<parthenon::X1DIR>(0, 0, 0);
+            const Real &dx_j = coords.Dxc<parthenon::X2DIR>(0, 0, 0);
             const Real &dx_k = coords.Dxc<parthenon::X3DIR>(0, 0, 0);
 
             // get current, lower, upper neighbor block levels in x-direction
@@ -664,9 +802,19 @@ TaskStatus UpdateDerivedTransportFieldsImpl(MeshData<Real> *md, const Real dt) {
                                      ? rlev
                                      : static_cast<Real>(vmesh.GetLevel(b, 1, 0, 0));
 
+            // calculate neighbor refinement scaling factors
+            const Real scle_lz = k == kb.s ? std::pow(2.0, rlev - rlev_lz) : 1.0;
+            const Real scle_uz = k == ku ? std::pow(2.0, rlev - rlev_uz) : 1.0;
+
             // calculate neighbor dx values
-            const Real dx_lz = k == kb.s ? std::pow(2.0, rlev - rlev_lz) * dx_k : dx_k;
-            const Real dx_uz = k == ku ? std::pow(2.0, rlev - rlev_uz) * dx_k : dx_k;
+            const Real dx_lz = scle_lz * dx_k;
+            const Real dx_uz = scle_uz * dx_k;
+
+            // calculate neighbor min length for min optical thickness (for threshold
+            // check)
+            const Real dx_push = std::min(dx_i, std::min(dx_j, dx_k));
+            const Real dx_lmin = scle_lz * dx_push;
+            const Real dx_umin = scle_uz * dx_push;
 
             // TODO: interpolate temperatures to evaluate face opacities?
             // (If opacity gradients are not large, maybe this is not needed)
@@ -687,28 +835,65 @@ TaskStatus UpdateDerivedTransportFieldsImpl(MeshData<Real> *md, const Real dt) {
             [[maybe_unused]] auto mscatter = mscattering;
             [[maybe_unused]] auto opac = opacity;
             [[maybe_unused]] auto scatter = scattering;
+            [[maybe_unused]] const auto dlnud = dlnu;
+            [[maybe_unused]] const auto n_nubinsd = n_nubins;
+            [[maybe_unused]] const auto &nu_binsd = nu_bins;
+            [[maybe_unused]] const auto hd = h;
+            [[maybe_unused]] const auto sbd = sb;
+            [[maybe_unused]] const auto tau_ddmcd = tau_ddmc;
+            [[maybe_unused]] const auto lam_extd = lam_ext;
             if constexpr (FT == FrequencyType::gray) {
               ss_l = mscatter.RosselandMeanTotalScatteringCoefficient(rho_l, temp_l);
               aa_l = mopac.AbsorptionCoefficient(rho_l, temp_l, gmode2d);
               ss_u = mscatter.RosselandMeanTotalScatteringCoefficient(rho_u, temp_u);
               aa_u = mopac.AbsorptionCoefficient(rho_u, temp_u, gmode2d);
+
+              // calculate optical thicknesses from lower and upper cell
+              const Real tau_lmin = dx_lmin * (ss_l + aa_l);
+              const Real tau_umin = dx_umin * (ss_u + aa_u);
+              Real tau_l = dx_lz * (ss_l + aa_l);
+              Real tau_u = dx_uz * (ss_u + aa_u);
+              tau_l = tau_lmin > tau_ddmcd ? tau_l : 2.0 * lam_extd;
+              tau_u = tau_umin > tau_ddmcd ? tau_u : 2.0 * lam_extd;
+
+              // set probability (face DDMC albedo); for grey mode these are copies
+              vmesh(b, TE::F3, fj::ddmc_lo_face_prob(), k, j, i) =
+                  2.0 / (3.0 * (tau_l + tau_u));
+              vmesh(b, TE::F3, fj::ddmc_hi_face_prob(), k, j, i) =
+                  2.0 / (3.0 * (tau_l + tau_u));
+
             } else if constexpr (FT == FrequencyType::multigroup) {
-              // TODO: replace 3rd argument when this routine operates in multigroup
-              ss_l = scatter.TotalScatteringCoefficient(rho_l, temp_l, 1.0);
-              aa_l = opac.AbsorptionCoefficient(rho_l, temp_l, 1.0);
-              ss_u = scatter.TotalScatteringCoefficient(rho_u, temp_u, 1.0);
-              aa_u = opac.AbsorptionCoefficient(rho_u, temp_u, 1.0);
+
+              // create DDMC MG leakage data helper argument (defined in
+              // ddmc_mg_utils.hpp)
+              // clang-format off
+              const ddmc_mg_leak_args dmg{n_nubins,
+                                          dlnud,
+                                          hd,
+                                          sbd,
+                                          tau_ddmcd,
+                                          dx_lmin,
+                                          dx_umin,
+                                          dx_lz,
+                                          dx_uz,
+                                          rho_l,
+                                          rho_u,
+                                          temp_l,
+                                          temp_u};
+              // clang-format on
+
+              // face side indicator
+              constexpr bool use_lo = true;
+              constexpr bool use_hi = false;
+
+              // integrate lo-z leakage probability
+              vmesh(b, TE::F3, fj::ddmc_lo_face_prob(), k, j, i) =
+                  calc_ddmc_mg_leakprob(opac, scatter, dmg, nu_binsd, use_lo);
+
+              // integrate hi-z leakage probability
+              vmesh(b, TE::F3, fj::ddmc_hi_face_prob(), k, j, i) =
+                  calc_ddmc_mg_leakprob(opac, scatter, dmg, nu_bins, use_hi);
             }
-
-            // calculate optical thicknesses from lower and upper cell
-            Real tau_l = dx_lz * (ss_l + aa_l);
-            Real tau_u = dx_uz * (ss_u + aa_u);
-            tau_l = tau_l > tau_ddmc ? tau_l : 2.0 * lam_ext;
-            tau_u = tau_u > tau_ddmc ? tau_u : 2.0 * lam_ext;
-
-            // set probability (face DDMC albedo)
-            vmesh(b, TE::F3, fj::ddmc_face_prob(), k, j, i) =
-                2.0 / (3.0 * (tau_l + tau_u));
           });
     }
   }

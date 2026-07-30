@@ -44,8 +44,9 @@ TaskStatus SourcePhotons(T *md, const Real t_start, const Real dt) {
   const Real h = jb_pkg->template Param<Real>("planck_constant");
   auto &eos = jb_pkg->template Param<EOS>("eos_d");
   int n_nubins = JaybenneNull<int>();
-  Real numin = JaybenneNull<Real>();
-  Real numax = JaybenneNull<Real>();
+  Real dlnu = JaybenneNull<Real>();
+  std::vector<Real> nu_grid = JaybenneNull<std::vector<Real>>();
+  ParArray1D<Real> nu_bins;
   MeanOpacity mopacity;
   Opacity opacity;
   if constexpr (FT == FrequencyType::gray) {
@@ -53,8 +54,14 @@ TaskStatus SourcePhotons(T *md, const Real t_start, const Real dt) {
   } else if constexpr (FT == FrequencyType::multigroup) {
     opacity = jb_pkg->template Param<Opacity>("opacity_d");
     n_nubins = jb_pkg->template Param<int>("n_nubins");
-    numin = jb_pkg->template Param<Real>("numin");
-    numax = jb_pkg->template Param<Real>("numax");
+    dlnu = jb_pkg->template Param<Real>("dlnu");
+    nu_grid = jb_pkg->template Param<std::vector<Real>>("nu_grid");
+    nu_bins = ParArray1D<Real>("nu_bins", n_nubins);
+    auto nu_bins_h = nu_bins.GetHostMirror();
+    for (int n = 0; n < n_nubins; ++n) {
+      nu_bins_h(n) = nu_grid[n];
+    }
+    nu_bins.DeepCopy(nu_bins_h);
   }
   auto &do_emission = jb_pkg->template Param<bool>("do_emission");
   auto &source_strategy = jb_pkg->template Param<SourceStrategy>("source_strategy");
@@ -76,6 +83,7 @@ TaskStatus SourcePhotons(T *md, const Real t_start, const Real dt) {
   const Real &emit_temp_th = jb_pkg->template Param<Real>("emit_temp_threshold");
   const Real &vv = jb_pkg->template Param<Real>("speed_of_light");
   const Real &sb = jb_pkg->template Param<Real>("stefan_boltzmann");
+  const Real &kbolt = jb_pkg->template Param<Real>("boltzmann");
 
   // Create pack
   static auto desc =
@@ -146,45 +154,58 @@ TaskStatus SourcePhotons(T *md, const Real t_start, const Real dt) {
               const Real &sie = vmesh(b, fjh::sie(), k, j, i);
               const Real temp = eos.TemperatureFromDensityInternalEnergy(rho, sie);
               [[maybe_unused]] const auto gmoded = gmode;
-              [[maybe_unused]] const Real &sbd = sb;
-              [[maybe_unused]] const Real &vvd = vv;
-              [[maybe_unused]] const Real &dtd = dt;
+              [[maybe_unused]] const auto &sbd = sb;
+              [[maybe_unused]] const auto &kboltd = kbolt;
+              [[maybe_unused]] const auto hd = h;
+              [[maybe_unused]] const auto &vvd = vv;
+              [[maybe_unused]] const auto &dtd = dt;
               [[maybe_unused]] auto mopac = mopacity;
               [[maybe_unused]] auto opac = opacity;
-              [[maybe_unused]] const auto numind = numin;
-              [[maybe_unused]] const auto numaxd = numax;
               [[maybe_unused]] const auto n_nubinsd = n_nubins;
+              [[maybe_unused]] const auto dlnud = dlnu;
+              [[maybe_unused]] const auto &nu_binsd = nu_bins;
               Real erad = JaybenneNull<Real>();
               if constexpr (ST == SourceType::thermal) {
                 erad = (4.0 * sbd / vvd) * std::pow(temp, 4.0) * dv;
+                // leverage emission_cdf for initial Planck sampling
+                if constexpr (FT == FrequencyType::multigroup) {
+                  // calculate bin width (assuming log bin width)
+                  Real ee = hd * nu_binsd(0);
+                  Real dee = dlnud * ee;
+                  vmesh(b, fj::emission_cdf(0), k, j, i) =
+                      jaybenne::midpoint_Planck(kboltd * temp, ee, dee);
+                  for (int n = 1; n < n_nubinsd; n++) {
+                    ee = hd * nu_binsd(n);
+                    dee = dlnud * ee;
+                    vmesh(b, fj::emission_cdf(n), k, j, i) =
+                        jaybenne::midpoint_Planck(kboltd * temp, ee, dee) +
+                        vmesh(b, fj::emission_cdf(n - 1), k, j, i);
+                  }
+                  for (int n = 0; n < n_nubinsd; n++) {
+                    // Normalize emission CDF
+                    vmesh(b, fj::emission_cdf(n), k, j, i) /=
+                        vmesh(b, fj::emission_cdf(n_nubinsd - 1), k, j, i);
+                  }
+                }
               } else if constexpr (ST == SourceType::emission) {
                 Real emis = JaybenneNull<Real>();
                 if constexpr (FT == FrequencyType::gray) {
                   emis = mopac.Emissivity(rho, temp, gmode);
                 } else if constexpr (FT == FrequencyType::multigroup) {
                   // Construct emission CDF
-                  const Real dlnu = (std::log(numaxd) - std::log(numind)) / n_nubinsd;
-                  // this is the mid-point of the 1st group in log-space:
-                  // nu=exp(log(numin) + 0.5*dlnu)
-                  Real nu = numind * std::exp(0.5 * dlnu);
-                  Real dnu = nu * dlnu;
+                  // calculate bin width (assuming log bin width)
+                  Real dnu = dlnud * nu_binsd(0);
                   vmesh(b, fj::emission_cdf(0), k, j, i) =
-                      opac.EmissivityPerNu(rho, temp, numind * std::exp(0.5 * dlnu)) *
-                      dnu;
+                      opac.EmissivityPerNu(rho, temp, nu_binsd(0)) * dnu;
                   for (int n = 1; n < n_nubinsd; n++) {
-                    // this is the mid-point of group n in log-space:
-                    // nu=exp(log(numin)+(n+0.5)*dlnu)
-                    nu = numind * std::exp((n + 0.5) * dlnu);
-                    dnu = dlnu * nu;
+                    dnu = dlnud * nu_binsd(n);
                     vmesh(b, fj::emission_cdf(n), k, j, i) =
-                        opac.EmissivityPerNu(rho, temp, nu) * dnu +
+                        opac.EmissivityPerNu(rho, temp, nu_binsd(n)) * dnu +
                         vmesh(b, fj::emission_cdf(n - 1), k, j, i);
                   }
-                  emis = 0.0;
+                  // Get total emissivity (before normalizing the CDF)
+                  emis = vmesh(b, fj::emission_cdf(n_nubinsd - 1), k, j, i);
                   for (int n = 0; n < n_nubinsd; n++) {
-                    const Real dnu = dlnu * numind * std::exp((n + 0.5) * dlnu);
-                    // Get total emissivity
-                    emis += vmesh(b, fj::emission_cdf(n), k, j, i);
                     // Normalize emission CDF
                     vmesh(b, fj::emission_cdf(n), k, j, i) /=
                         vmesh(b, fj::emission_cdf(n_nubinsd - 1), k, j, i);
@@ -266,13 +287,13 @@ TaskStatus SourcePhotons(T *md, const Real t_start, const Real dt) {
         const Real y_min = coords.template Xc<parthenon::X2DIR>(jb.s) - 0.5 * dx_j;
         const Real z_min = coords.template Xc<parthenon::X3DIR>(kb.s) - 0.5 * dx_k;
         const int cell_idx_1d = (k - kb.s) * (nx1 * nx2) + (j - jb.s) * nx1 + (i - ib.s);
-        [[maybe_unused]] const Real &sbd = sb;
-        [[maybe_unused]] const Real &dtd = dt;
-        [[maybe_unused]] const Real &t_startd = t_start;
-        [[maybe_unused]] const Real hd = h;
-        [[maybe_unused]] const Real numaxd = numax;
-        [[maybe_unused]] const Real numind = numin;
-        [[maybe_unused]] const int n_nubinsd = n_nubins;
+        [[maybe_unused]] const auto &kboltd = kbolt;
+        [[maybe_unused]] const auto &dtd = dt;
+        [[maybe_unused]] const auto &t_startd = t_start;
+        [[maybe_unused]] const auto hd = h;
+        [[maybe_unused]] const auto n_nubinsd = n_nubins;
+        [[maybe_unused]] const auto dlnud = dlnu;
+        [[maybe_unused]] const auto &nu_binsd = nu_bins;
 
         // Starting index and length of particles in this cell
         const int &pstart_idx = prefix_sum(b, cell_idx_1d);
@@ -311,19 +332,17 @@ TaskStatus SourcePhotons(T *md, const Real t_start, const Real dt) {
           const Real &sie = vmesh(b, fjh::sie(), k, j, i);
           const Real temp = eos.TemperatureFromDensityInternalEnergy(rho, sie);
           if constexpr (FT == FrequencyType::gray) {
-            ppack_r(b, ph::energy(), n) = sample_Planck_energy(rng_gen, sbd, temp);
+            ppack_r(b, ph::energy(), n) = sample_Planck_energy(rng_gen, kboltd, temp);
           } else if constexpr (FT == FrequencyType::multigroup) {
-            // Sample energy from CDF
+            // Sample energy (particle frequency) from CDF
             const Real rand = rng_gen.drand();
-            int n;
-            for (n = 0; n < n_nubinsd; n++) {
-              if (vmesh(b, fj::emission_cdf(n), k, j, i) >= rand) {
+            int g;
+            for (g = 0; g < n_nubinsd; ++g) {
+              if (vmesh(b, fj::emission_cdf(g), k, j, i) >= rand) {
                 break;
               }
             }
-            const Real dlnu = (std::log(numaxd) - std::log(numind)) / n_nubinsd;
-            const Real nu = numind * std::exp((n + 0.5) * dlnu);
-            ppack_r(b, ph::energy(), n) = hd * nu;
+            ppack_r(b, ph::energy(), n) = hd * nu_binsd(g);
           }
 
           if constexpr (ST == SourceType::emission) {

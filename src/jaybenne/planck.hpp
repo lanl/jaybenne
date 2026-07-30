@@ -19,12 +19,30 @@
 namespace jaybenne {
 
 //----------------------------------------------------------------------------------------
+//! \fn Midpoint Rule Planck integral, returning unnormalized non-dimensional value
+//! \brief Note the arguments must be in the same units (code temperature units).
+//!        The onus is on the calling routine(s) to normalize or dimensionalize if needed.
+//!        Since the midpoint is provided, this could be made 1st-order as well
+//!        (left/right)
+KOKKOS_FORCEINLINE_FUNCTION
+Real midpoint_Planck(const Real &temp, const Real &nu, const Real &dnu) {
+  const Real tinv = 1.0 / temp;
+  const Real x = nu * tinv;
+  if (x > 1e-4) {
+    const Real efac = std::exp(-x);
+    return (dnu * tinv) * (x * x * x) * efac / (1.0 - efac);
+  } else {
+    return (dnu * tinv) * (x * x);
+  }
+}
+
+//----------------------------------------------------------------------------------------
 //! \fn Real sample_Planck_energy
 //! \brief Efficiently samples the Planck distribution for particle energy
 //!        rng_gen: RNG pool
 //!        T: distribution temperature
 KOKKOS_FORCEINLINE_FUNCTION
-Real sample_Planck_energy(RngGen &rng_gen, const Real &sb, const Real &temp) {
+Real sample_Planck_energy(RngGen &rng_gen, const Real &kbolt, const Real &temp) {
   // Sampling method from Everett & Cashwell 1972
   const Real xi0 = rng_gen.drand();
   const Real rhs = xi0 * std::pow(M_PI, 4.0) / 90.0;
@@ -46,7 +64,7 @@ Real sample_Planck_energy(RngGen &rng_gen, const Real &sb, const Real &temp) {
   const Real xi2 = rng_gen.drand();
   const Real xi3 = rng_gen.drand();
   const Real xi4 = rng_gen.drand();
-  return -(1.0 / ll) * std::log(xi1 * xi2 * xi3 * xi4) * sb * temp;
+  return -(1.0 / ll) * std::log(xi1 * xi2 * xi3 * xi4) * kbolt * temp;
 }
 
 } // namespace jaybenne

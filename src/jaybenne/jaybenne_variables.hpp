@@ -34,7 +34,8 @@ namespace field {
 namespace jaybenne {
 JAYBENNE_FIELD_VARIABLE(field.jaybenne, energy_tally);
 JAYBENNE_FIELD_VARIABLE(field.jaybenne, fleck_factor);
-JAYBENNE_FIELD_VARIABLE(field.jaybenne, ddmc_face_prob);
+JAYBENNE_FIELD_VARIABLE(field.jaybenne, ddmc_lo_face_prob);
+JAYBENNE_FIELD_VARIABLE(field.jaybenne, ddmc_hi_face_prob);
 JAYBENNE_FIELD_VARIABLE(field.jaybenne, source_ew_per_cell);
 JAYBENNE_FIELD_VARIABLE(field.jaybenne, source_num_per_cell);
 JAYBENNE_FIELD_VARIABLE(field.jaybenne, delta_num_per_cell);

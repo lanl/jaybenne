@@ -37,18 +37,27 @@ TaskStatus TransportPhotons(MeshData<Real> *md, const Real t_start, const Real d
   auto &resolved_pkgs = pm->resolved_packages;
   auto &jb_pkg = pm->packages.Get("jaybenne");
   const Real h = jb_pkg->template Param<Real>("planck_constant");
+  const Real hinv = 1.0 / h;
   auto &eos = jb_pkg->template Param<EOS>("eos_d");
   Opacity opacity;
   Scattering scattering;
   int n_nubins = JaybenneNull<int>();
-  Real numin = JaybenneNull<Real>();
-  Real numax = JaybenneNull<Real>();
+  Real dlnu = JaybenneNull<Real>();
+  std::vector<Real> nu_grid = JaybenneNull<std::vector<Real>>();
+  ParArray1D<Real> nu_bins;
   if constexpr (FT == FrequencyType::multigroup) {
     opacity = jb_pkg->template Param<Opacity>("opacity_d");
     scattering = jb_pkg->template Param<Scattering>("scattering_d");
     n_nubins = jb_pkg->template Param<int>("n_nubins");
-    numin = jb_pkg->template Param<Real>("numin");
-    numax = jb_pkg->template Param<Real>("numax");
+    // initialize (assumed) log-spaced frequency bins
+    dlnu = jb_pkg->template Param<Real>("dlnu");
+    nu_grid = jb_pkg->template Param<std::vector<Real>>("nu_grid");
+    nu_bins = ParArray1D<Real>("nu_bins", n_nubins);
+    auto nu_bins_h = nu_bins.GetHostMirror();
+    for (int n = 0; n < n_nubins; ++n) {
+      nu_bins_h(n) = nu_grid[n];
+    }
+    nu_bins.DeepCopy(nu_bins_h);
   }
   auto &rng_pool = jb_pkg->template Param<RngPool>("rng_pool");
   const Real vv = jb_pkg->template Param<Real>("speed_of_light");
@@ -90,9 +99,10 @@ TaskStatus TransportPhotons(MeshData<Real> *md, const Real t_start, const Real d
 
           // frequency data, needed for multigroup
           [[maybe_unused]] const auto hd = h;
-          [[maybe_unused]] const auto numind = numin;
-          [[maybe_unused]] const auto numaxd = numax;
+          [[maybe_unused]] const auto hinvd = hinv;
           [[maybe_unused]] const auto n_nubinsd = n_nubins;
+          [[maybe_unused]] const auto dlnud = dlnu;
+          [[maybe_unused]] const auto nu_binsd = nu_bins;
 
           auto &coords = vmesh.GetCoordinates(b);
           const Real &dx_i = coords.template Dxc<parthenon::X1DIR>(0, 0, 0);
@@ -150,15 +160,14 @@ TaskStatus TransportPhotons(MeshData<Real> *md, const Real t_start, const Real d
             [[maybe_unused]] auto scatter = scattering;
             [[maybe_unused]] auto eost = eos;
             if constexpr (FT == FrequencyType::gray) {
-              // TODO: use TotalScatteringCoefficient(rho, temp), when available
               ss = vmesh(b, fjh::scattering_opacity(), kp, jp, ip);
               aa = vmesh(b, fjh::absorption_opacity(), kp, jp, ip);
             } else if constexpr (FT == FrequencyType::multigroup) {
               const Real &rho = vmesh(b, fjh::density(), kp, jp, ip);
               const Real &sie = vmesh(b, fjh::sie(), kp, jp, ip);
               const Real temp = eost.TemperatureFromDensityInternalEnergy(rho, sie);
-              ss = scatter.TotalScatteringCoefficient(rho, temp, ee);
-              aa = opac.AbsorptionCoefficient(rho, temp, ee);
+              ss = scatter.TotalScatteringCoefficient(rho, temp, hinvd * ee);
+              aa = opac.AbsorptionCoefficient(rho, temp, hinvd * ee);
             }
 
             // reset collision indicators
@@ -221,28 +230,27 @@ TaskStatus TransportPhotons(MeshData<Real> *md, const Real t_start, const Real d
             }
 
             if (is_scattered) {
-              // process scattering
-              // TODO(BRR): template on scattering model
-              ScatterKernel(rng_gen, vv, vx, vy, vz);
 
-              // if multigroup eff scatter, redistribute frequency
-              if constexpr (FT == FrequencyType::multigroup) {
-                // sample whether effective scattering occurred
-                const Real rand1 = rng_gen.drand();
-                if (rand1 * ((1.0 - ff) * aa + ss) < (1.0 - ff) * aa) {
+              // form particle scattering argument struct
+              ptcl_scat_args psa{rng_gen, vv, vx, vy, vz, ee};
 
-                  // Sample energy from CDF
-                  const Real rand2 = rng_gen.drand();
-                  int n;
-                  for (n = 0; n < n_nubinsd; n++) {
-                    if (vmesh(b, fj::emission_cdf(n), kp, jp, ip) >= rand2) {
-                      break;
-                    }
-                  }
-                  const Real dlnu = (std::log(numaxd) - std::log(numind)) / n_nubinsd;
-                  const Real nu = numind * std::exp((n + 0.5) * dlnu);
-                  ee = hd * nu;
-                }
+              if constexpr (FT == FrequencyType::gray) {
+
+                // just do direction-sampling
+                sample_vol_iso_dir(psa);
+
+                // if multigroup eff scatter, redistribute frequency
+              } else if constexpr (FT == FrequencyType::multigroup) {
+
+                // form cell scattering argument struct
+                // clang-format off
+                cell_scat_args csa{b, ip, jp, kp,
+                                   ff, aa, ss,
+                                   n_nubinsd, hd};
+                // clang-format on
+
+                // invoke frequency-dependent scattering kernel
+                scatter_kernel(vmesh, csa, nu_binsd, psa);
               }
             }
 

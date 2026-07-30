@@ -112,7 +112,10 @@ def run_tests_in_temp_dir(pr_number, head_repo, head_ref, output_dir):
             + " --restart ./stepdiff.out1.00001.rhdf --use_mpiexec"
             + " && ./stepdiff_smr.py --executable "
             + os.path.join(build_dir, "mcblock")
-            + " --input ../inputs/stepdiff_smr_hybrid.in --use_mpiexec --mpi_nthreads 8",
+            + " --input ../inputs/stepdiff_smr_hybrid.in --use_mpiexec --mpi_nthreads 8"
+            + " && ./stepdiff_mg_plaw.py --executable "
+            + os.path.join(build_dir, "mcblock")
+            + " --input ../inputs/stepdiff_mg_plaw_ddmc.in --use_mpiexec",
         ]
         ret = subprocess.run(test_command, check=True)
 

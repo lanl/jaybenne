@@ -43,6 +43,7 @@ using namespace parthenon::package::prelude;
 // TODO(BRR) don't include these here?
 #include "boundaries.hpp"
 #include "jaybenne_variables.hpp"
+#include "model_enums.hpp"
 #include "planck.hpp"
 #include "scattering.hpp"
 
@@ -54,11 +55,6 @@ Initialize(parthenon::ParameterInput *pin, Opacity &opacity, Scattering &scatter
 std::shared_ptr<parthenon::StateDescriptor>
 Initialize(parthenon::ParameterInput *pin, MeanOpacity &mopacity,
            MeanScattering &mscattering, EOS &eos, std::string block_name = "jaybenne");
-
-// Model enums
-enum class SourceStrategy { uniform, energy };
-enum class SourceType { thermal, emission };
-enum class FrequencyType { gray, multigroup };
 
 // Initialization nulls
 template <typename T = Real>
