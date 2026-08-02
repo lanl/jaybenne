@@ -37,7 +37,7 @@ using Scattering = singularity::photons::impl::S_Variant<
     singularity::photons::NonCGSUnitsS<singularity::photons::ThomsonS>>;
 
 using MeanScattering =
-    singularity::photons::MeanNonCGSUnitsS<singularity::photons::MeanSOpacityCGS>;
+    singularity::photons::MeanNonCGSUnitsS<singularity::photons::MeanSOpacityBase>;
 
 } // namespace mcblock
 
