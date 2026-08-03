@@ -113,6 +113,7 @@ elif [[ $PARTITION == "darwin-volta-x86" ]]; then
     shorten_prompt
     module load cmake/3.26.3
     module list
+    export UCX_TLS=^gdr_copy # claude-opus suggestion for GPU buffer-pinning error (may just be node cn410)
     echo "...setup SUCCEEDED"
 elif [[ $PARTITION == "darwin-a100" ]]; then
     module purge
