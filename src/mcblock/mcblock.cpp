@@ -112,19 +112,25 @@ std::shared_ptr<StateDescriptor> Initialize(ParameterInput *pin) {
   MeanOpacity mopacity;
   std::string abs_model = pin->GetString("mcblock/absorption", "opacity_model");
   if (frequency_type == FrequencyType::gray) {
+
+    // hard-coded numbers in Hz
+    const std::array<Real, 2> gray_bounds = {time_scale * 1.e12, time_scale * 3.e20};
+
     if (abs_model == "none") {
       auto opac = singularity::photons::Gray(1.e-100);
       mopacity =
           singularity::photons::MeanNonCGSUnits<singularity::photons::MeanOpacityBase>(
-              singularity::photons::MeanOpacityBase(opac, -1, 1, 2, -1, 1, 2), time_scale,
-              mass_scale, length_scale, temperature_scale);
+              singularity::photons::MeanOpacityBase(opac, -1, 1, 2, -1, 1, 2, gray_bounds,
+                                                    1),
+              time_scale, mass_scale, length_scale, temperature_scale);
     } else if (abs_model == "constant") {
       Real kappa = pin->GetReal("mcblock/absorption", "constant_value");
       auto opac = singularity::photons::Gray(kappa);
       mopacity =
           singularity::photons::MeanNonCGSUnits<singularity::photons::MeanOpacityBase>(
-              singularity::photons::MeanOpacityBase(opac, -1, 1, 2, -1, 1, 2), time_scale,
-              mass_scale, length_scale, temperature_scale);
+              singularity::photons::MeanOpacityBase(opac, -1, 1, 2, -1, 1, 2, gray_bounds,
+                                                    1),
+              time_scale, mass_scale, length_scale, temperature_scale);
     } else if (abs_model == "table") {
       std::string table_filename = pin->GetString("mcblock/absorption", "opacity_table");
       mopacity =
@@ -186,18 +192,21 @@ std::shared_ptr<StateDescriptor> Initialize(ParameterInput *pin) {
   std::string sct_model =
       pin->GetOrAddString("mcblock/scattering", "opacity_model", "none");
   if (frequency_type == FrequencyType::gray) {
+    const std::array<Real, 2> gray_bounds = {1.e12, 3.e20};
     if (sct_model == "none") {
       auto sopac = singularity::photons::GrayS(0.0, apm);
       mscattering =
-          singularity::photons::MeanNonCGSUnitsS<singularity::photons::MeanSOpacityCGS>(
-              singularity::photons::MeanSOpacityCGS(sopac, -1., 1., 2, -1., 1., 2),
+          singularity::photons::MeanNonCGSUnitsS<singularity::photons::MeanSOpacityBase>(
+              singularity::photons::MeanSOpacityBase(sopac, -1., 1., 2, -1., 1., 2,
+                                                     gray_bounds, 1),
               time_scale, mass_scale, length_scale, 1.);
     } else if (sct_model == "constant") {
       Real kappa_s = pin->GetReal("mcblock/scattering", "constant_value");
       auto sopac = singularity::photons::GrayS(kappa_s, apm);
       mscattering =
-          singularity::photons::MeanNonCGSUnitsS<singularity::photons::MeanSOpacityCGS>(
-              singularity::photons::MeanSOpacityCGS(sopac, -1., 1., 2, -1., 1., 2),
+          singularity::photons::MeanNonCGSUnitsS<singularity::photons::MeanSOpacityBase>(
+              singularity::photons::MeanSOpacityBase(sopac, -1., 1., 2, -1., 1., 2,
+                                                     gray_bounds, 1),
               time_scale, mass_scale, length_scale, 1.);
     } else {
       PARTHENON_FAIL("Only none or constant scattering models supported!");
@@ -321,8 +330,8 @@ void ProblemGenerator(MeshBlock *pmb, ParameterInput *pin) {
           const Real &rho = vmesh(b, fm::density(), k, j, i);
           const Real &sie = vmesh(b, fm::sie(), k, j, i);
           const Real temp = eos.TemperatureFromDensityInternalEnergy(rho, sie);
-          const Real aa = mopacity.AbsorptionCoefficient(rho, temp, gmode);
-          const Real ss = mscattering.RosselandMeanTotalScatteringCoefficient(rho, temp);
+          const Real aa = mopacity.AbsorptionCoefficient(rho, temp, 0, gmode);
+          const Real ss = mscattering.ScatteringCoefficient(rho, temp, 0, gmode);
           vmesh(b, fm::absorption_opacity(), k, j, i) = aa;
           vmesh(b, fm::scattering_opacity(), k, j, i) = ss;
         });
@@ -338,6 +347,10 @@ void UpdateDerived(MeshData<Real> *md) {
   PARTHENON_INSTRUMENT
   namespace fm = field::material;
   using parthenon::MakePackDescriptor;
+  using singularity::photons::OpacityAveraging;
+  using singularity::photons::Planck;
+  using singularity::photons::Rosseland;
+
   auto pm = md->GetParentPointer();
   auto &resolved_pkgs = pm->resolved_packages;
   auto &jbn = pm->packages.Get("jaybenne");
@@ -376,6 +389,13 @@ void UpdateDerived(MeshData<Real> *md) {
 
   // update opacity (TODO: only gray for now)
   if (frequency_type == FrequencyType::gray) {
+
+    // get opacity average indicators
+    const auto &use_planck = jbn->template Param<bool>("use_planck");
+    const auto &use_rosseland = jbn->template Param<bool>("use_rosseland");
+    // set opacity mode for grey opacity
+    const OpacityAveraging gmode = (use_planck && !use_rosseland) ? Planck : Rosseland;
+
     parthenon::par_for(
         DEFAULT_LOOP_PATTERN, "Update opacity", parthenon::DevExecSpace(), 0,
         vmesh.GetNBlocks() - 1, kbe.s, kbe.e, jbe.s, jbe.e, ibe.s, ibe.e,
@@ -383,8 +403,8 @@ void UpdateDerived(MeshData<Real> *md) {
           const Real &rho = vmesh(b, fm::density(), k, j, i);
           const Real &sie = vmesh(b, fm::sie(), k, j, i);
           const Real temp = eos.TemperatureFromDensityInternalEnergy(rho, sie);
-          const Real aa = mopacity.AbsorptionCoefficient(rho, temp);
-          const Real ss = mscattering.RosselandMeanTotalScatteringCoefficient(rho, temp);
+          const Real aa = mopacity.AbsorptionCoefficient(rho, temp, 0, gmode);
+          const Real ss = mscattering.ScatteringCoefficient(rho, temp, 0, gmode);
           vmesh(b, fm::absorption_opacity(), k, j, i) = aa;
           vmesh(b, fm::scattering_opacity(), k, j, i) = ss;
         });

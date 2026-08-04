@@ -448,6 +448,7 @@ TaskStatus UpdateDerivedTransportFieldsImpl(MeshData<Real> *md, const Real dt) {
   Real dlnu = -1.0;
   Real h = -1.0;
   Real sb = -1.0;
+  Real ac = -1.0; // radiation constant times light speed (set below)
   std::vector<Real> nu_grid = JaybenneNull<std::vector<Real>>();
   ParArray1D<Real> nu_bins;
 
@@ -458,6 +459,7 @@ TaskStatus UpdateDerivedTransportFieldsImpl(MeshData<Real> *md, const Real dt) {
   const OpacityAveraging gmode = use_planck ? Planck : Rosseland;
 
   if constexpr (FT == FrequencyType::gray) {
+    ac = 4.0 * (jbn->template Param<Real>("stefan_boltzmann"));
     mopacity = jbn->template Param<MeanOpacity>("mopacity_d");
     mscattering = jbn->template Param<MeanScattering>("mscattering_d");
   } else if constexpr (FT == FrequencyType::multigroup) {
@@ -498,6 +500,7 @@ TaskStatus UpdateDerivedTransportFieldsImpl(MeshData<Real> *md, const Real dt) {
         const Real temp = eos.TemperatureFromDensityInternalEnergy(rho, sie);
         const Real cv = eos.SpecificHeatFromDensityInternalEnergy(rho, sie);
         Real emis = JaybenneNull<Real>();
+        [[maybe_unused]] const auto acd = ac;
         [[maybe_unused]] const auto gmoded = gmode;
         [[maybe_unused]] auto mopac = mopacity;
         [[maybe_unused]] auto opac = opacity;
@@ -505,7 +508,8 @@ TaskStatus UpdateDerivedTransportFieldsImpl(MeshData<Real> *md, const Real dt) {
         [[maybe_unused]] const auto &nu_binsd = nu_bins;
         [[maybe_unused]] const auto dlnud = dlnu;
         if constexpr (FT == FrequencyType::gray) {
-          emis = mopac.Emissivity(rho, temp, gmoded);
+          const Real T4 = SQR(SQR(temp));
+          emis = mopac.AbsorptionCoefficient(rho, temp, 0, gmoded) * acd * T4;
         } else if constexpr (FT == FrequencyType::multigroup) {
           // NOTE: 'emis = opac.Emissivity(rho, temp);' may not integrate
           emis = 0.0;
@@ -609,10 +613,10 @@ TaskStatus UpdateDerivedTransportFieldsImpl(MeshData<Real> *md, const Real dt) {
           [[maybe_unused]] const auto tau_ddmcd = tau_ddmc;
           [[maybe_unused]] const auto lam_extd = lam_ext;
           if constexpr (FT == FrequencyType::gray) {
-            ss_l = mscatter.RosselandMeanTotalScatteringCoefficient(rho_l, temp_l);
-            aa_l = mopac.AbsorptionCoefficient(rho_l, temp_l, gmode2d);
-            ss_u = mscatter.RosselandMeanTotalScatteringCoefficient(rho_u, temp_u);
-            aa_u = mopac.AbsorptionCoefficient(rho_u, temp_u, gmode2d);
+            ss_l = mscatter.ScatteringCoefficient(rho_l, temp_l, 0, gmode2d);
+            aa_l = mopac.AbsorptionCoefficient(rho_l, temp_l, 0, gmode2d);
+            ss_u = mscatter.ScatteringCoefficient(rho_u, temp_u, 0, gmode2d);
+            aa_u = mopac.AbsorptionCoefficient(rho_u, temp_u, 0, gmode2d);
 
             // calculate optical thicknesses from lower and upper cell
             const Real tau_lmin = dx_lmin * (ss_l + aa_l);
@@ -725,10 +729,10 @@ TaskStatus UpdateDerivedTransportFieldsImpl(MeshData<Real> *md, const Real dt) {
             [[maybe_unused]] const auto tau_ddmcd = tau_ddmc;
             [[maybe_unused]] const auto lam_extd = lam_ext;
             if constexpr (FT == FrequencyType::gray) {
-              ss_l = mscatter.RosselandMeanTotalScatteringCoefficient(rho_l, temp_l);
-              aa_l = mopac.AbsorptionCoefficient(rho_l, temp_l, gmode2d);
-              ss_u = mscatter.RosselandMeanTotalScatteringCoefficient(rho_u, temp_u);
-              aa_u = mopac.AbsorptionCoefficient(rho_u, temp_u, gmode2d);
+              ss_l = mscatter.ScatteringCoefficient(rho_l, temp_l, 0, gmode2d);
+              aa_l = mopac.AbsorptionCoefficient(rho_l, temp_l, 0, gmode2d);
+              ss_u = mscatter.ScatteringCoefficient(rho_u, temp_u, 0, gmode2d);
+              aa_u = mopac.AbsorptionCoefficient(rho_u, temp_u, 0, gmode2d);
 
               // calculate optical thicknesses from lower and upper cell
               const Real tau_lmin = dx_lmin * (ss_l + aa_l);
@@ -843,10 +847,10 @@ TaskStatus UpdateDerivedTransportFieldsImpl(MeshData<Real> *md, const Real dt) {
             [[maybe_unused]] const auto tau_ddmcd = tau_ddmc;
             [[maybe_unused]] const auto lam_extd = lam_ext;
             if constexpr (FT == FrequencyType::gray) {
-              ss_l = mscatter.RosselandMeanTotalScatteringCoefficient(rho_l, temp_l);
-              aa_l = mopac.AbsorptionCoefficient(rho_l, temp_l, gmode2d);
-              ss_u = mscatter.RosselandMeanTotalScatteringCoefficient(rho_u, temp_u);
-              aa_u = mopac.AbsorptionCoefficient(rho_u, temp_u, gmode2d);
+              ss_l = mscatter.ScatteringCoefficient(rho_l, temp_l, 0, gmode2d);
+              aa_l = mopac.AbsorptionCoefficient(rho_l, temp_l, 0, gmode2d);
+              ss_u = mscatter.ScatteringCoefficient(rho_u, temp_u, 0, gmode2d);
+              aa_u = mopac.AbsorptionCoefficient(rho_u, temp_u, 0, gmode2d);
 
               // calculate optical thicknesses from lower and upper cell
               const Real tau_lmin = dx_lmin * (ss_l + aa_l);

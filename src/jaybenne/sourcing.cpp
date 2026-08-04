@@ -190,7 +190,9 @@ TaskStatus SourcePhotons(T *md, const Real t_start, const Real dt) {
               } else if constexpr (ST == SourceType::emission) {
                 Real emis = JaybenneNull<Real>();
                 if constexpr (FT == FrequencyType::gray) {
-                  emis = mopac.Emissivity(rho, temp, gmode);
+                  const Real T4 = SQR(SQR(temp));
+                  emis =
+                      mopac.AbsorptionCoefficient(rho, temp, 0, gmoded) * 4.0 * sbd * T4;
                 } else if constexpr (FT == FrequencyType::multigroup) {
                   // Construct emission CDF
                   // calculate bin width (assuming log bin width)
