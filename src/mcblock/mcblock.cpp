@@ -113,7 +113,8 @@ std::shared_ptr<StateDescriptor> Initialize(ParameterInput *pin) {
   std::string abs_model = pin->GetString("mcblock/absorption", "opacity_model");
   if (frequency_type == FrequencyType::gray) {
 
-    const std::array<Real, 2> gray_bounds = {1.e12, 3.e20};
+    // hard-coded numbers in Hz
+    const std::array<Real, 2> gray_bounds = {time_scale * 1.e12, time_scale * 3.e20};
 
     if (abs_model == "none") {
       auto opac = singularity::photons::Gray(1.e-100);
