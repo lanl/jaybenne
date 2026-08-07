@@ -103,8 +103,8 @@ TaskStatus SampleDDMCBlockFace(MeshData<Real> *md) {
       resolved_pkgs.get());
   auto vmesh = desc.GetPack(md);
 
-  // set tolerance for checking particle coordinate
-  constexpr Real eps = parthenon::robust::EPS();
+  // Allow roundoff in the coarse-to-fine DDMC block-face position.
+  constexpr Real eps = eps_ddmc_match_tolerance();
 
   // Create SwarmPacks
   static auto pdesc_r =
