@@ -27,6 +27,13 @@ constexpr Real eps_imc_offset() { return 1.0e6 * parthenon::robust::EPS(); }
 KOKKOS_FORCEINLINE_FUNCTION
 constexpr Real eps_ddmc_offset() { return 1.0e8 * parthenon::robust::EPS(); }
 
+// DDMC particles are placed a finite distance inside the receiving cell. Use a
+// fraction of that displacement when recognizing a block-face transition: a
+// machine-epsilon tolerance is too small once the source and destination faces
+// have been formed independently.
+KOKKOS_FORCEINLINE_FUNCTION
+constexpr Real eps_ddmc_match_tolerance() { return 0.1 * eps_ddmc_offset(); }
+
 KOKKOS_FORCEINLINE_FUNCTION
 void sample_face_iso_dir(const Real vv, RngGen &rng_gen, Real &v1, Real &v2, Real &v3) {
 
@@ -518,8 +525,8 @@ void ptcl_ddmc_albedo(ddmc_step_args dia, bool &is_rejected) {
 KOKKOS_FORCEINLINE_FUNCTION
 void ptcl_ddmc_to_imc(tran_step_args tra) {
 
-  // set tolerance for checking particle coordinate
-  constexpr Real eps = parthenon::robust::EPS();
+  // Allow roundoff in independently computed source and destination cell faces.
+  constexpr Real eps = eps_ddmc_match_tolerance();
 
   // cell dimensions
   const Real dx = tra.xu - tra.xl;
@@ -560,6 +567,7 @@ void ptcl_ddmc_to_imc(tran_step_args tra) {
       // sample direction
       sample_face_iso_dir(tra.vv, tra.rng_gen, tra.vy, tra.vz, tra.vx);
       res_valid = true;
+      break;
     } else if (fuzzy_equal(tra.y, tra.yu - resf * eps_ddmc_offset() * dy, dy, eps) &&
                tra.multi_d) {
       // sample x and z
