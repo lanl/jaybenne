@@ -107,29 +107,30 @@ std::shared_ptr<StateDescriptor> Initialize(ParameterInput *pin) {
     PARTHENON_FAIL("\"mcblock/frequency_type\" not recognized!");
   }
 
+  // gray goes from 0 to infty
+  const std::vector<Real> opac_grp_bnds = {0.0, std::numeric_limits<Real>::infinity()};
+  const int NG = static_cast<int>(opac_grp_bnds.size()) - 1;
+
   // Absorption opacity model
   Opacity opacity;
   MeanOpacity mopacity;
   std::string abs_model = pin->GetString("mcblock/absorption", "opacity_model");
   if (frequency_type == FrequencyType::gray) {
 
-    // hard-coded numbers in Hz
-    const std::array<Real, 2> gray_bounds = {time_scale * 1.e12, time_scale * 3.e20};
-
     if (abs_model == "none") {
       auto opac = singularity::photons::Gray(1.e-100);
       mopacity =
           singularity::photons::MeanNonCGSUnits<singularity::photons::MeanOpacityBase>(
-              singularity::photons::MeanOpacityBase(opac, -1, 1, 2, -1, 1, 2, gray_bounds,
-                                                    1),
+              singularity::photons::MeanOpacityBase(opac, -1, 1, 2, -1, 1, 2,
+                                                    opac_grp_bnds, NG),
               time_scale, mass_scale, length_scale, temperature_scale);
     } else if (abs_model == "constant") {
       Real kappa = pin->GetReal("mcblock/absorption", "constant_value");
       auto opac = singularity::photons::Gray(kappa);
       mopacity =
           singularity::photons::MeanNonCGSUnits<singularity::photons::MeanOpacityBase>(
-              singularity::photons::MeanOpacityBase(opac, -1, 1, 2, -1, 1, 2, gray_bounds,
-                                                    1),
+              singularity::photons::MeanOpacityBase(opac, -1, 1, 2, -1, 1, 2,
+                                                    opac_grp_bnds, NG),
               time_scale, mass_scale, length_scale, temperature_scale);
     } else if (abs_model == "table") {
       std::string table_filename = pin->GetString("mcblock/absorption", "opacity_table");
@@ -192,22 +193,21 @@ std::shared_ptr<StateDescriptor> Initialize(ParameterInput *pin) {
   std::string sct_model =
       pin->GetOrAddString("mcblock/scattering", "opacity_model", "none");
   if (frequency_type == FrequencyType::gray) {
-    const std::array<Real, 2> gray_bounds = {1.e12, 3.e20};
     if (sct_model == "none") {
       auto sopac = singularity::photons::GrayS(0.0, apm);
       mscattering =
           singularity::photons::MeanNonCGSUnitsS<singularity::photons::MeanSOpacityBase>(
               singularity::photons::MeanSOpacityBase(sopac, -1., 1., 2, -1., 1., 2,
-                                                     gray_bounds, 1),
-              time_scale, mass_scale, length_scale, 1.);
+                                                     opac_grp_bnds, NG),
+              time_scale, mass_scale, length_scale, temperature_scale);
     } else if (sct_model == "constant") {
       Real kappa_s = pin->GetReal("mcblock/scattering", "constant_value");
       auto sopac = singularity::photons::GrayS(kappa_s, apm);
       mscattering =
           singularity::photons::MeanNonCGSUnitsS<singularity::photons::MeanSOpacityBase>(
               singularity::photons::MeanSOpacityBase(sopac, -1., 1., 2, -1., 1., 2,
-                                                     gray_bounds, 1),
-              time_scale, mass_scale, length_scale, 1.);
+                                                     opac_grp_bnds, NG),
+              time_scale, mass_scale, length_scale, temperature_scale);
     } else {
       PARTHENON_FAIL("Only none or constant scattering models supported!");
     }
