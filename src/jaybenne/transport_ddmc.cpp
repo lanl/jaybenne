@@ -193,6 +193,9 @@ TaskStatus TransportPhotons_DDMC(MeshData<Real> *md, const Real t_start, const R
 
             const bool is_ddmc_step = dx_push * (ss + aa) > tau_ddmc;
             Real e_abs = 0.0;
+            const int ip_abs = ip;
+            const int jp_abs = jp;
+            const int kp_abs = kp;
 
             if (is_ddmc_step) {
 
@@ -403,7 +406,7 @@ TaskStatus TransportPhotons_DDMC(MeshData<Real> *md, const Real t_start, const R
             // exiting DDMC region
             if (e_abs > 0.0) {
               // process continuous absorption
-              Real &dejbn = vmesh(b, fj::energy_delta(), kp, jp, ip);
+              Real &dejbn = vmesh(b, fj::energy_delta(), kp_abs, jp_abs, ip_abs);
               Kokkos::atomic_add(&dejbn, e_abs);
             }
 
