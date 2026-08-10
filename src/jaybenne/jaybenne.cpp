@@ -240,7 +240,10 @@ Initialize_impl(ParameterInput *pin, EOS &eos,
   bool unique_rank_seeds = pin->GetOrAddBoolean(block_name, "unique_rank_seeds", true);
   pkg->AddParam<>("unique_rank_seeds", unique_rank_seeds);
   int seed = pin->GetOrAddInteger(block_name, "seed", 123);
-  pkg->AddParam<>("seed", unique_rank_seeds ? seed + Globals::my_rank : seed);
+  if (unique_rank_seeds) {
+    seed += Globals::my_rank;
+  }
+  pkg->AddParam<>("seed", seed);
   RngPool rng_pool(seed);
   pkg->AddParam<>("rng_pool", rng_pool);
 
