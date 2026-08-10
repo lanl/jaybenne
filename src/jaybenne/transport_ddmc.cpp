@@ -193,6 +193,9 @@ TaskStatus TransportPhotons_DDMC(MeshData<Real> *md, const Real t_start, const R
 
             const bool is_ddmc_step = dx_push * (ss + aa) > tau_ddmc;
             Real e_abs = 0.0;
+            const int ip_abs = ip;
+            const int jp_abs = jp;
+            const int kp_abs = kp;
 
             if (is_ddmc_step) {
 
@@ -252,9 +255,6 @@ TaskStatus TransportPhotons_DDMC(MeshData<Real> *md, const Real t_start, const R
               const int ip_old = ip;
               const int jp_old = jp;
               const int kp_old = kp;
-              int ip_next = ip;
-              int jp_next = jp;
-              int kp_next = kp;
 
               // NOTE(MGDDMC): grey ss will be needed for inelastic scattering
               Real aa_g = aa;
@@ -292,7 +292,7 @@ TaskStatus TransportPhotons_DDMC(MeshData<Real> *md, const Real t_start, const R
                                   Px_l, Py_l, Pz_l, Px_u, Py_u, Pz_u,
                                   // updated by push
                                   t, x, y, z, vx, vy, vz,
-                                  ip_next, jp_next, kp_next, ww, fraction, e_abs,
+                                  ip, jp, kp, ww, fraction, e_abs,
                                   is_absorbed, is_scattered, is_census, is_leaked};
               // clang-format on
 
@@ -327,25 +327,24 @@ TaskStatus TransportPhotons_DDMC(MeshData<Real> *md, const Real t_start, const R
                 if (is_leaked && !is_elastic) {
 
                   // only one index should be +/-1 of the current index
-                  const int ip_u = (ip_old == ip_next + 1 ? ip_old : ip_next);
-                  const int ip_l = (ip_old == ip_next - 1 ? ip_old : ip_next);
-                  const int jp_u = (jp_old == jp_next + 1 ? jp_old : jp_next);
-                  const int jp_l = (jp_old == jp_next - 1 ? jp_old : jp_next);
-                  const int kp_u = (kp_old == kp_next + 1 ? kp_old : kp_next);
-                  const int kp_l = (kp_old == kp_next - 1 ? kp_old : kp_next);
+                  const int ip_u = (ip_old == ip + 1 ? ip_old : ip);
+                  const int ip_l = (ip_old == ip - 1 ? ip_old : ip);
+                  const int jp_u = (jp_old == jp + 1 ? jp_old : jp);
+                  const int jp_l = (jp_old == jp - 1 ? jp_old : jp);
+                  const int kp_u = (kp_old == kp + 1 ? kp_old : kp);
+                  const int kp_l = (kp_old == kp - 1 ? kp_old : kp);
                   PARTHENON_DEBUG_REQUIRE(ip_u + jp_u + kp_u - ip_l - jp_l - kp_l == 1,
                                           "invalid index difference for DDMC leakage");
 
                   // select side of face
-                  const bool use_lo_x = (ip_old == ip_next - 1);
-                  const bool use_lo_y = (jp_old == jp_next - 1);
-                  const bool use_lo_z = (kp_old == kp_next - 1);
+                  const bool use_lo_x = (ip_old == ip - 1);
+                  const bool use_lo_y = (jp_old == jp - 1);
+                  const bool use_lo_z = (kp_old == kp - 1);
                   // use_lo can only be false here if one of the old is the new index+1
                   const bool use_lo = (use_lo_x || use_lo_y || use_lo_z);
 
                   // TODO(MGDDMC): is this dx alone sufficient for nu-sampling at face?
-                  const Real dx_f =
-                      (ip_old != ip_next ? dx_i : (jp_old != jp_next ? dx_j : dx_k));
+                  const Real dx_f = (ip_old != ip ? dx_i : (jp_old != jp ? dx_j : dx_k));
 
                   // get rho and temperature
                   const Real &rho_l = vmesh(b, fjh::density(), kp_l, jp_l, ip_l);
@@ -407,7 +406,7 @@ TaskStatus TransportPhotons_DDMC(MeshData<Real> *md, const Real t_start, const R
             // exiting DDMC region
             if (e_abs > 0.0) {
               // process continuous absorption
-              Real &dejbn = vmesh(b, fj::energy_delta(), kp, jp, ip);
+              Real &dejbn = vmesh(b, fj::energy_delta(), kp_abs, jp_abs, ip_abs);
               Kokkos::atomic_add(&dejbn, e_abs);
             }
 
