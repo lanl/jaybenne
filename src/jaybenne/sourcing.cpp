@@ -47,12 +47,8 @@ TaskStatus SourcePhotons(T *md, const Real t_start, const Real dt) {
   Real dlnu = JaybenneNull<Real>();
   std::vector<Real> nu_grid = JaybenneNull<std::vector<Real>>();
   ParArray1D<Real> nu_bins;
-  MeanOpacity mopacity;
-  Opacity opacity;
-  if constexpr (FT == FrequencyType::gray) {
-    mopacity = jb_pkg->template Param<MeanOpacity>("mopacity_d");
-  } else if constexpr (FT == FrequencyType::multigroup) {
-    opacity = jb_pkg->template Param<Opacity>("opacity_d");
+  MeanOpacity mopacity = jb_pkg->template Param<MeanOpacity>("mopacity_d");
+  if constexpr (FT == FrequencyType::multigroup) {
     n_nubins = jb_pkg->template Param<int>("n_nubins");
     dlnu = jb_pkg->template Param<Real>("dlnu");
     nu_grid = jb_pkg->template Param<std::vector<Real>>("nu_grid");
@@ -160,7 +156,6 @@ TaskStatus SourcePhotons(T *md, const Real t_start, const Real dt) {
               [[maybe_unused]] const auto &vvd = vv;
               [[maybe_unused]] const auto &dtd = dt;
               [[maybe_unused]] auto mopac = mopacity;
-              [[maybe_unused]] auto opac = opacity;
               [[maybe_unused]] const auto n_nubinsd = n_nubins;
               [[maybe_unused]] const auto dlnud = dlnu;
               [[maybe_unused]] const auto &nu_binsd = nu_bins;
@@ -196,14 +191,20 @@ TaskStatus SourcePhotons(T *md, const Real t_start, const Real dt) {
                 } else if constexpr (FT == FrequencyType::multigroup) {
                   // Construct emission CDF
                   // calculate bin width (assuming log bin width)
-                  Real dnu = dlnud * nu_binsd(0);
-                  vmesh(b, fj::emission_cdf(0), k, j, i) =
-                      opac.EmissivityPerNu(rho, temp, nu_binsd(0)) * dnu;
+                  // NOTE: frequency is used instead of group index to permit unequality
+                  // between transport and MeanOpacity frequency grids (maybe not useful)
+                  Real abs = mopac.AbsorptionCoefficient(rho, temp, nu_binsd(0), gmoded);
+                  Real ee = hd * nu_binsd(0);
+                  Real dee = dlnud * ee;
+                  Real B = jaybenne::midpoint_Planck(kboltd * temp, ee, dee);
+                  vmesh(b, fj::emission_cdf(0), k, j, i) = abs * B;
                   for (int n = 1; n < n_nubinsd; n++) {
-                    dnu = dlnud * nu_binsd(n);
+                    abs = mopac.AbsorptionCoefficient(rho, temp, nu_binsd(n), gmoded);
+                    ee = hd * nu_binsd(n);
+                    dee = dlnud * ee;
+                    B = jaybenne::midpoint_Planck(kboltd * temp, ee, dee);
                     vmesh(b, fj::emission_cdf(n), k, j, i) =
-                        opac.EmissivityPerNu(rho, temp, nu_binsd(n)) * dnu +
-                        vmesh(b, fj::emission_cdf(n - 1), k, j, i);
+                        abs * B + vmesh(b, fj::emission_cdf(n - 1), k, j, i);
                   }
                   // Get total emissivity (before normalizing the CDF)
                   emis = vmesh(b, fj::emission_cdf(n_nubinsd - 1), k, j, i);

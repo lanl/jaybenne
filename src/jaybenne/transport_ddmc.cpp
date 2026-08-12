@@ -53,8 +53,8 @@ TaskStatus TransportPhotons_DDMC(MeshData<Real> *md, const Real t_start, const R
   Real dlnu = JaybenneNull<Real>();
   std::vector<Real> nu_grid = JaybenneNull<std::vector<Real>>();
   ParArray1D<Real> nu_bins;
-  Opacity opacity;
-  Scattering scattering;
+  MeanOpacity opacity = jb_pkg->template Param<MeanOpacity>("mopacity_d");
+  MeanScattering scattering = jb_pkg->template Param<MeanScattering>("mscattering_d");
   if constexpr (FT == FrequencyType::multigroup) {
     n_nubins = jb_pkg->template Param<int>("n_nubins");
     // initialize (assumed) log-spaced frequency bins
@@ -66,9 +66,6 @@ TaskStatus TransportPhotons_DDMC(MeshData<Real> *md, const Real t_start, const R
       nu_bins_h(n) = nu_grid[n];
     }
     nu_bins.DeepCopy(nu_bins_h);
-    // set opacity objects
-    opacity = jb_pkg->template Param<Opacity>("opacity_d");
-    scattering = jb_pkg->template Param<Scattering>("scattering_d");
   }
 
   // Create SparsePack
@@ -181,8 +178,8 @@ TaskStatus TransportPhotons_DDMC(MeshData<Real> *md, const Real t_start, const R
               rho = vmesh(b, fjh::density(), kp, jp, ip);
               const Real &sie = vmesh(b, fjh::sie(), kp, jp, ip);
               temp = eost.TemperatureFromDensityInternalEnergy(rho, sie);
-              ss = scatter.TotalScatteringCoefficient(rho, temp, hinvd * ee);
-              aa = opac.AbsorptionCoefficient(rho, temp, hinvd * ee);
+              ss = scatter.ScatteringCoefficientFromNu(rho, temp, hinvd * ee);
+              aa = opac.AbsorptionCoefficientFromNu(rho, temp, hinvd * ee);
             }
 
             // reset collision indicators

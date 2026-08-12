@@ -10,10 +10,11 @@ namespace jaybenne {
 //----------------------------------------------------------------------------------------
 // helper struct to encapsulate data needed to integrate DDMC probabilities over groups
 struct ddmc_mg_leak_args {
+  // const int &gmode;     // average type to use in MG opacity (usually Rosseland)
   const int &n_nubins;  // number of frequency groups (or bins)
   const Real &dlnu;     // log-spacing of frequency groups
   const Real &hd;       // Planck constant
-  const Real &sbd;      // Stefan-Boltzmann constant
+  const Real &kboltd;   // Boltzmann constant
   const Real &tau_ddmc; // DDMC cell optical-thickness threshold
   const Real &dx_lmin;  // min cell length scale used to activate DDMC
   const Real &dx_umin;  // min cell length scale used to activate DDMC
@@ -30,7 +31,7 @@ struct ddmc_mg_cell_args {
   const int &n_nubins;  // number of frequency groups (or bins)
   const Real &dlnu;     // log-spacing of frequency groups
   const Real &hd;       // Planck constant
-  const Real &sbd;      // Stefan-Boltzmann constant
+  const Real &kboltd;   // Boltzmann constant
   const Real &tau_ddmc; // DDMC cell optical-thickness threshold
   const Real &dx_min;   // min cell length scale used to activate DDMC
   const Real &rho;      // cell density
@@ -58,10 +59,10 @@ calc_ddmc_mg_leak_numdenom(const OP &abs, const SC &sct, const ddmc_mg_leak_args
   for (int n = 0; n < dmg.n_nubins; ++n) {
 
     // evaluate face opacities at nu_bins(n)
-    const Real ss_l = sct.TotalScatteringCoefficient(dmg.rho_l, dmg.temp_l, nu_bins(n));
-    const Real aa_l = abs.AbsorptionCoefficient(dmg.rho_l, dmg.temp_l, nu_bins(n));
-    const Real ss_u = sct.TotalScatteringCoefficient(dmg.rho_u, dmg.temp_u, nu_bins(n));
-    const Real aa_u = abs.AbsorptionCoefficient(dmg.rho_u, dmg.temp_u, nu_bins(n));
+    const Real ss_l = sct.ScatteringCoefficientFromNu(dmg.rho_l, dmg.temp_l, nu_bins(n));
+    const Real aa_l = abs.AbsorptionCoefficientFromNu(dmg.rho_l, dmg.temp_l, nu_bins(n));
+    const Real ss_u = sct.ScatteringCoefficientFromNu(dmg.rho_u, dmg.temp_u, nu_bins(n));
+    const Real aa_u = abs.AbsorptionCoefficientFromNu(dmg.rho_u, dmg.temp_u, nu_bins(n));
 
     // calculate optical thicknesses from lower and upper cell
     const Real tau_lmin = dmg.dx_lmin * (ss_l + aa_l);
@@ -86,7 +87,7 @@ calc_ddmc_mg_leak_numdenom(const OP &abs, const SC &sct, const ddmc_mg_leak_args
       const Real dee = ee * dmg.dlnu;
 
       // get an unnormalized, non-dimensional Planck integral over group
-      const Real bg = midpoint_Planck(dmg.sbd * temp_f, ee, dee);
+      const Real bg = midpoint_Planck(dmg.kboltd * temp_f, ee, dee);
 
       // aggregate values
       planck_sum += bg;
@@ -141,10 +142,10 @@ KOKKOS_FORCEINLINE_FUNCTION Real sample_leakage_group(const OP &abs, const SC &s
   for (int n = 0; n < dmg.n_nubins; ++n) {
 
     // evaluate face opacities at nu_bins(n)
-    const Real ss_l = sct.TotalScatteringCoefficient(dmg.rho_l, dmg.temp_l, nu_bins(n));
-    const Real aa_l = abs.AbsorptionCoefficient(dmg.rho_l, dmg.temp_l, nu_bins(n));
-    const Real ss_u = sct.TotalScatteringCoefficient(dmg.rho_u, dmg.temp_u, nu_bins(n));
-    const Real aa_u = abs.AbsorptionCoefficient(dmg.rho_u, dmg.temp_u, nu_bins(n));
+    const Real ss_l = sct.ScatteringCoefficientFromNu(dmg.rho_l, dmg.temp_l, nu_bins(n));
+    const Real aa_l = abs.AbsorptionCoefficientFromNu(dmg.rho_l, dmg.temp_l, nu_bins(n));
+    const Real ss_u = sct.ScatteringCoefficientFromNu(dmg.rho_u, dmg.temp_u, nu_bins(n));
+    const Real aa_u = abs.AbsorptionCoefficientFromNu(dmg.rho_u, dmg.temp_u, nu_bins(n));
 
     // calculate optical thicknesses from lower and upper cell
     const Real tau_lmin = dmg.dx_lmin * (ss_l + aa_l);
@@ -167,7 +168,7 @@ KOKKOS_FORCEINLINE_FUNCTION Real sample_leakage_group(const OP &abs, const SC &s
       const Real dee = ee * dmg.dlnu;
 
       // get an unnormalized, non-dimensional Planck integral over group
-      const Real bg = midpoint_Planck(dmg.sbd * temp_f, ee, dee);
+      const Real bg = midpoint_Planck(dmg.kboltd * temp_f, ee, dee);
 
       // aggregate values
       planck_sum += bg;
@@ -201,15 +202,15 @@ calc_ddmc_mg_probs(const OP &abs, const SC &sct, const ddmc_mg_cell_args &dmgc,
   for (int n = 0; n < dmgc.n_nubins; ++n) {
 
     // evaluate face opacities at nu_bins(n)
-    const Real ss = sct.TotalScatteringCoefficient(dmgc.rho, dmgc.temp, nu_bins(n));
-    const Real aa = abs.AbsorptionCoefficient(dmgc.rho, dmgc.temp, nu_bins(n));
+    const Real ss = sct.ScatteringCoefficientFromNu(dmgc.rho, dmgc.temp, nu_bins(n));
+    const Real aa = abs.AbsorptionCoefficientFromNu(dmgc.rho, dmgc.temp, nu_bins(n));
 
     // convert to energy units for Planck integral
     const Real ee = dmgc.hd * nu_bins(n);
     const Real dee = ee * dmgc.dlnu;
 
     // get an unnormalized, non-dimensional Planck integral over group
-    const Real bg = midpoint_Planck(dmgc.sbd * dmgc.temp, ee, dee);
+    const Real bg = midpoint_Planck(dmgc.kboltd * dmgc.temp, ee, dee);
 
     // sum total (Planck)
     abs_tot_sum += bg * aa;
@@ -248,8 +249,8 @@ KOKKOS_FORCEINLINE_FUNCTION Real sample_ddmc2imc_outscatter(
   for (int n = 0; n < dmgc.n_nubins; ++n) {
 
     // evaluate face opacities at nu_bins(n)
-    const Real ss = sct.TotalScatteringCoefficient(dmgc.rho, dmgc.temp, nu_bins(n));
-    const Real aa = abs.AbsorptionCoefficient(dmgc.rho, dmgc.temp, nu_bins(n));
+    const Real ss = sct.ScatteringCoefficientFromNu(dmgc.rho, dmgc.temp, nu_bins(n));
+    const Real aa = abs.AbsorptionCoefficientFromNu(dmgc.rho, dmgc.temp, nu_bins(n));
 
     // check group exclusion
     const bool is_ddmc_grp = dmgc.dx_min * (ss + aa) > dmgc.tau_ddmc;
@@ -257,7 +258,7 @@ KOKKOS_FORCEINLINE_FUNCTION Real sample_ddmc2imc_outscatter(
       // get an unnormalized, non-dimensional Planck integral over group
       const Real ee = dmgc.hd * nu_bins(n);
       const Real dee = ee * dmgc.dlnu;
-      const Real bg = midpoint_Planck(dmgc.sbd * dmgc.temp, ee, dee);
+      const Real bg = midpoint_Planck(dmgc.kboltd * dmgc.temp, ee, dee);
       scat_out_tot_sum += bg * aa;
     }
   }
@@ -272,8 +273,8 @@ KOKKOS_FORCEINLINE_FUNCTION Real sample_ddmc2imc_outscatter(
   for (int n = 0; n < dmgc.n_nubins; ++n) {
 
     // evaluate face opacities at nu_bins(n)
-    const Real ss = sct.TotalScatteringCoefficient(dmgc.rho, dmgc.temp, nu_bins(n));
-    const Real aa = abs.AbsorptionCoefficient(dmgc.rho, dmgc.temp, nu_bins(n));
+    const Real ss = sct.ScatteringCoefficientFromNu(dmgc.rho, dmgc.temp, nu_bins(n));
+    const Real aa = abs.AbsorptionCoefficientFromNu(dmgc.rho, dmgc.temp, nu_bins(n));
 
     // check group exclusion
     const bool is_ddmc_grp = dmgc.dx_min * (ss + aa) > dmgc.tau_ddmc;
@@ -284,7 +285,7 @@ KOKKOS_FORCEINLINE_FUNCTION Real sample_ddmc2imc_outscatter(
       const Real dee = ee * dmgc.dlnu;
 
       // get an unnormalized, non-dimensional Planck integral over group
-      const Real bg = midpoint_Planck(dmgc.sbd * dmgc.temp, ee, dee);
+      const Real bg = midpoint_Planck(dmgc.kboltd * dmgc.temp, ee, dee);
 
       // aggregate values
       abs_sum += bg * aa;

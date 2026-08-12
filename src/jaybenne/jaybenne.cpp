@@ -351,63 +351,49 @@ std::shared_ptr<StateDescriptor> Initialize(ParameterInput *pin, MeanOpacity &mo
 
   auto pkg = Initialize_impl(pin, eos, units, block_name);
 
-  pkg->AddParam<>("frequency_type", FrequencyType::gray);
+  if (mopacity.ngroups() > 1 || mscattering.ngroups() > 1) {
+    PARTHENON_REQUIRE(mopacity.ngroups() == mscattering.ngroups(),
+                      "mopacity and mscattering have unequal group numbers");
+
+    // Frequency discretization
+    auto time = units.time;
+    Real numin = pin->GetReal(block_name, "numin"); // in Hz
+    Real numax = pin->GetReal(block_name, "numax"); // in Hz
+    int n_nubins = pin->GetInteger(block_name, "n_nubins");
+    pkg->AddParam<>("n_nubins", n_nubins);
+
+    // assume units.time = [s/code time] = [code freq/Hz]
+    numin *= time; // in code units
+    numax *= time; // in code units
+
+    // Construct and store frequency grid
+    // NOTE: these are group interior points, not edges
+    std::vector<Real> nu_grid(n_nubins, 0.0);
+    // assume uniform log-spacing, grid is midpoints in log-space
+    const Real dlnu = (std::log(numax) - std::log(numin)) / n_nubins;
+    for (int n = 0; n < n_nubins; ++n) {
+      nu_grid[n] = numin * std::exp((n + 0.5) * dlnu);
+    }
+    // store the grid in the parameter input
+    pkg->AddParam<>("dlnu", dlnu);
+    pkg->AddParam<>("nu_grid", nu_grid);
+
+    // Emission CDF
+    Metadata m_onecopy({Metadata::Cell, Metadata::OneCopy}, std::vector<int>({n_nubins}));
+    pkg->AddField(field::jaybenne::emission_cdf::name(), m_onecopy);
+
+    pkg->AddParam<>("frequency_type", FrequencyType::multigroup);
+
+  } else {
+    // number of groups is 1 - assume gray
+    pkg->AddParam<>("frequency_type", FrequencyType::gray);
+  }
 
   // Opacity model
   pkg->AddParam<>("mopacity_d", mopacity.GetOnDevice());
 
   // Scattering model
   pkg->AddParam<>("mscattering_d", mscattering.GetOnDevice());
-
-  return pkg;
-}
-
-//----------------------------------------------------------------------------------------
-//! \fn  StateDescriptor Jaybenne::Initialize
-//! \brief Initialize the Jaybenne physics package. This function defines and sets the
-//! parameters associated with Jaybenne, and enrolls the data variables associated with
-//! this physics package, specific to the multigroup frequency discretization.
-std::shared_ptr<StateDescriptor> Initialize(ParameterInput *pin, Opacity &opacity,
-                                            Scattering &scattering, EOS &eos,
-                                            std::string block_name) {
-  const auto units = opacity.GetRuntimePhysicalConstants();
-
-  auto pkg = Initialize_impl(pin, eos, units, block_name);
-
-  // Frequency discretization
-  auto time = units.time;
-  Real numin = pin->GetReal(block_name, "numin"); // in Hz
-  Real numax = pin->GetReal(block_name, "numax"); // in Hz
-  int n_nubins = pin->GetInteger(block_name, "n_nubins");
-  pkg->AddParam<>("n_nubins", n_nubins);
-
-  // assume units.time = [s/code time] = [code freq/Hz]
-  numin *= time; // in code units
-  numax *= time; // in code units
-
-  // Construct and store frequency grid
-  // NOTE: these are group interior points, not edges
-  std::vector<Real> nu_grid(n_nubins, 0.0);
-  // assume uniform log-spacing, grid is midpoints in log-space
-  const Real dlnu = (std::log(numax) - std::log(numin)) / n_nubins;
-  for (int n = 0; n < n_nubins; ++n) {
-    nu_grid[n] = numin * std::exp((n + 0.5) * dlnu);
-  }
-  // store the grid in the parameter input
-  pkg->AddParam<>("dlnu", dlnu);
-  pkg->AddParam<>("nu_grid", nu_grid);
-
-  pkg->AddParam<>("frequency_type", FrequencyType::multigroup);
-
-  // Emission CDF
-  Metadata m_onecopy({Metadata::Cell, Metadata::OneCopy}, std::vector<int>({n_nubins}));
-  pkg->AddField(field::jaybenne::emission_cdf::name(), m_onecopy);
-
-  // Opacity model
-  pkg->AddParam<>("opacity_d", opacity.GetOnDevice());
-
-  // Scattering model
-  pkg->AddParam<>("scattering_d", scattering.GetOnDevice());
 
   return pkg;
 }
@@ -443,14 +429,13 @@ TaskStatus UpdateDerivedTransportFieldsImpl(MeshData<Real> *md, const Real dt) {
   auto &resolved_pkgs = pm->resolved_packages;
   auto &jbn = pm->packages.Get("jaybenne");
   auto &eos = jbn->template Param<EOS>("eos_d");
-  Opacity opacity;
-  Scattering scattering;
-  MeanOpacity mopacity;
-  MeanScattering mscattering;
+  MeanOpacity mopacity = jbn->template Param<MeanOpacity>("mopacity_d");
+  ;
+  MeanScattering mscattering = jbn->template Param<MeanScattering>("mscattering_d");
   int n_nubins = -1;
   Real dlnu = -1.0;
   Real h = -1.0;
-  Real sb = -1.0;
+  Real kbolt = -1.0;
   Real ac = -1.0; // radiation constant times light speed (set below)
   std::vector<Real> nu_grid = JaybenneNull<std::vector<Real>>();
   ParArray1D<Real> nu_bins;
@@ -463,16 +448,12 @@ TaskStatus UpdateDerivedTransportFieldsImpl(MeshData<Real> *md, const Real dt) {
 
   if constexpr (FT == FrequencyType::gray) {
     ac = 4.0 * (jbn->template Param<Real>("stefan_boltzmann"));
-    mopacity = jbn->template Param<MeanOpacity>("mopacity_d");
-    mscattering = jbn->template Param<MeanScattering>("mscattering_d");
   } else if constexpr (FT == FrequencyType::multigroup) {
     PARTHENON_REQUIRE(!(use_planck && use_rosseland),
                       "Modified Fleck factor is not compatible with multigroup!");
-    opacity = jbn->template Param<Opacity>("opacity_d");
-    scattering = jbn->template Param<Scattering>("scattering_d");
     n_nubins = jbn->template Param<int>("n_nubins");
     h = jbn->template Param<Real>("planck_constant");
-    sb = jbn->template Param<Real>("boltzmann");
+    kbolt = jbn->template Param<Real>("boltzmann");
     // initialize (assumed) log-spaced frequency grid
     dlnu = jbn->template Param<Real>("dlnu");
     nu_grid = jbn->template Param<std::vector<Real>>("nu_grid");
@@ -504,22 +485,33 @@ TaskStatus UpdateDerivedTransportFieldsImpl(MeshData<Real> *md, const Real dt) {
         const Real cv = eos.SpecificHeatFromDensityInternalEnergy(rho, sie);
         Real emis = JaybenneNull<Real>();
         [[maybe_unused]] const auto acd = ac;
+        [[maybe_unused]] const auto hd = h;
+        [[maybe_unused]] const auto kboltd = kbolt;
         [[maybe_unused]] const auto gmoded = gmode;
         [[maybe_unused]] auto mopac = mopacity;
-        [[maybe_unused]] auto opac = opacity;
         [[maybe_unused]] const auto n_nubinsd = n_nubins;
         [[maybe_unused]] const auto &nu_binsd = nu_bins;
         [[maybe_unused]] const auto dlnud = dlnu;
+        const Real acT4 = acd * SQR(SQR(temp));
         if constexpr (FT == FrequencyType::gray) {
-          const Real T4 = SQR(SQR(temp));
-          emis = mopac.AbsorptionCoefficient(rho, temp, 0, gmoded) * acd * T4;
+          emis = mopac.AbsorptionCoefficient(rho, temp, 0, gmoded) * acT4;
         } else if constexpr (FT == FrequencyType::multigroup) {
-          // NOTE: 'emis = opac.Emissivity(rho, temp);' may not integrate
+          // NOTE: restriction to LTE emission here (pending generalization)
           emis = 0.0;
+          Real plnk = 0.0;
           for (int n = 0; n < n_nubinsd; n++) {
-            const Real dnu = dlnud * nu_binsd(n);
-            emis += opac.EmissivityPerNu(rho, temp, nu_binsd(n)) * dnu;
+            const Real abs =
+                mopac.AbsorptionCoefficientFromNu(rho, temp, nu_binsd(n), gmoded);
+            const Real ee = hd * nu_binsd(n);
+            const Real dee = dlnud * ee;
+            const Real B = jaybenne::midpoint_Planck(kboltd * temp, ee, dee);
+            emis += abs * B;
+            plnk += B;
           }
+          PARTHENON_REQUIRE(plnk > 0.0, "Planck integral 0 in Fleck factor");
+          // normalize
+          emis /= plnk;
+          emis *= acT4;
         }
         vmesh(b, fj::fleck_factor(), k, j, i) =
             1.0 / (1.0 + (4.0 * emis / (rho * cv * temp)) * dt);
@@ -529,8 +521,8 @@ TaskStatus UpdateDerivedTransportFieldsImpl(MeshData<Real> *md, const Real dt) {
         if constexpr (FT == FrequencyType::gray) {
           if (use_pr) {
             // calculate modified fleck factor using Planck and Rosseland
-            const Real ross = mopac.AbsorptionCoefficient(rho, temp, Rosseland);
-            const Real plnk = mopac.AbsorptionCoefficient(rho, temp, Planck);
+            const Real ross = mopac.AbsorptionCoefficient(rho, temp, 0, Rosseland);
+            const Real plnk = mopac.AbsorptionCoefficient(rho, temp, 0, Planck);
             const Real &f = vmesh(b, fj::fleck_factor(), k, j, i);
             const Real fj = ross > 0.0 ? f * plnk / ross : f;
 
@@ -606,13 +598,11 @@ TaskStatus UpdateDerivedTransportFieldsImpl(MeshData<Real> *md, const Real dt) {
           [[maybe_unused]] const auto gmode2d = gmode2;
           [[maybe_unused]] auto mopac = mopacity;
           [[maybe_unused]] auto mscatter = mscattering;
-          [[maybe_unused]] auto opac = opacity;
-          [[maybe_unused]] auto scatter = scattering;
           [[maybe_unused]] const auto dlnud = dlnu;
           [[maybe_unused]] const auto n_nubinsd = n_nubins;
           [[maybe_unused]] const auto &nu_binsd = nu_bins;
           [[maybe_unused]] const auto hd = h;
-          [[maybe_unused]] const auto sbd = sb;
+          [[maybe_unused]] const auto kboltd = kbolt;
           [[maybe_unused]] const auto tau_ddmcd = tau_ddmc;
           [[maybe_unused]] const auto lam_extd = lam_ext;
           if constexpr (FT == FrequencyType::gray) {
@@ -642,7 +632,7 @@ TaskStatus UpdateDerivedTransportFieldsImpl(MeshData<Real> *md, const Real dt) {
             const ddmc_mg_leak_args dmg{n_nubinsd,
                                         dlnud,
                                         hd,
-                                        sbd,
+                                        kboltd,
                                         tau_ddmcd,
                                         dx_lmin,
                                         dx_umin,
@@ -660,11 +650,11 @@ TaskStatus UpdateDerivedTransportFieldsImpl(MeshData<Real> *md, const Real dt) {
 
             // integrate lo-x leakage probability
             vmesh(b, TE::F1, fj::ddmc_lo_face_prob(), k, j, i) =
-                calc_ddmc_mg_leakprob(opac, scatter, dmg, nu_binsd, use_lo);
+                calc_ddmc_mg_leakprob(mopac, mscatter, dmg, nu_binsd, use_lo);
 
             // integrate hi-x leakage probability
             vmesh(b, TE::F1, fj::ddmc_hi_face_prob(), k, j, i) =
-                calc_ddmc_mg_leakprob(opac, scatter, dmg, nu_binsd, use_hi);
+                calc_ddmc_mg_leakprob(mopac, mscatter, dmg, nu_binsd, use_hi);
           }
         });
 
@@ -722,13 +712,11 @@ TaskStatus UpdateDerivedTransportFieldsImpl(MeshData<Real> *md, const Real dt) {
             [[maybe_unused]] const auto gmode2d = gmode2;
             [[maybe_unused]] auto mopac = mopacity;
             [[maybe_unused]] auto mscatter = mscattering;
-            [[maybe_unused]] auto opac = opacity;
-            [[maybe_unused]] auto scatter = scattering;
             [[maybe_unused]] const auto dlnud = dlnu;
             [[maybe_unused]] const auto n_nubinsd = n_nubins;
             [[maybe_unused]] const auto &nu_binsd = nu_bins;
             [[maybe_unused]] const auto hd = h;
-            [[maybe_unused]] const auto sbd = sb;
+            [[maybe_unused]] const auto kboltd = kbolt;
             [[maybe_unused]] const auto tau_ddmcd = tau_ddmc;
             [[maybe_unused]] const auto lam_extd = lam_ext;
             if constexpr (FT == FrequencyType::gray) {
@@ -759,7 +747,7 @@ TaskStatus UpdateDerivedTransportFieldsImpl(MeshData<Real> *md, const Real dt) {
               const ddmc_mg_leak_args dmg{n_nubins,
                                           dlnud,
                                           hd,
-                                          sbd,
+                                          kboltd,
                                           tau_ddmcd,
                                           dx_lmin,
                                           dx_umin,
@@ -777,11 +765,11 @@ TaskStatus UpdateDerivedTransportFieldsImpl(MeshData<Real> *md, const Real dt) {
 
               // integrate lo-y leakage probability
               vmesh(b, TE::F2, fj::ddmc_lo_face_prob(), k, j, i) =
-                  calc_ddmc_mg_leakprob(opac, scatter, dmg, nu_binsd, use_lo);
+                  calc_ddmc_mg_leakprob(mopac, mscatter, dmg, nu_binsd, use_lo);
 
               // integrate hi-y leakage probability
               vmesh(b, TE::F2, fj::ddmc_hi_face_prob(), k, j, i) =
-                  calc_ddmc_mg_leakprob(opac, scatter, dmg, nu_binsd, use_hi);
+                  calc_ddmc_mg_leakprob(mopac, mscatter, dmg, nu_binsd, use_hi);
             }
           });
     }
@@ -840,13 +828,11 @@ TaskStatus UpdateDerivedTransportFieldsImpl(MeshData<Real> *md, const Real dt) {
             [[maybe_unused]] const auto gmode2d = gmode2;
             [[maybe_unused]] auto mopac = mopacity;
             [[maybe_unused]] auto mscatter = mscattering;
-            [[maybe_unused]] auto opac = opacity;
-            [[maybe_unused]] auto scatter = scattering;
             [[maybe_unused]] const auto dlnud = dlnu;
             [[maybe_unused]] const auto n_nubinsd = n_nubins;
             [[maybe_unused]] const auto &nu_binsd = nu_bins;
             [[maybe_unused]] const auto hd = h;
-            [[maybe_unused]] const auto sbd = sb;
+            [[maybe_unused]] const auto kboltd = kbolt;
             [[maybe_unused]] const auto tau_ddmcd = tau_ddmc;
             [[maybe_unused]] const auto lam_extd = lam_ext;
             if constexpr (FT == FrequencyType::gray) {
@@ -877,7 +863,7 @@ TaskStatus UpdateDerivedTransportFieldsImpl(MeshData<Real> *md, const Real dt) {
               const ddmc_mg_leak_args dmg{n_nubins,
                                           dlnud,
                                           hd,
-                                          sbd,
+                                          kboltd,
                                           tau_ddmcd,
                                           dx_lmin,
                                           dx_umin,
@@ -895,11 +881,11 @@ TaskStatus UpdateDerivedTransportFieldsImpl(MeshData<Real> *md, const Real dt) {
 
               // integrate lo-z leakage probability
               vmesh(b, TE::F3, fj::ddmc_lo_face_prob(), k, j, i) =
-                  calc_ddmc_mg_leakprob(opac, scatter, dmg, nu_binsd, use_lo);
+                  calc_ddmc_mg_leakprob(mopac, mscatter, dmg, nu_binsd, use_lo);
 
               // integrate hi-z leakage probability
               vmesh(b, TE::F3, fj::ddmc_hi_face_prob(), k, j, i) =
-                  calc_ddmc_mg_leakprob(opac, scatter, dmg, nu_bins, use_hi);
+                  calc_ddmc_mg_leakprob(mopac, mscatter, dmg, nu_bins, use_hi);
             }
           });
     }
