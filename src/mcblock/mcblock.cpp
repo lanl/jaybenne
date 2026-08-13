@@ -107,6 +107,8 @@ std::shared_ptr<StateDescriptor> Initialize(ParameterInput *pin) {
     PARTHENON_FAIL("\"mcblock/frequency_type\" not recognized!");
   }
 
+  pkg->AddParam<>("frequency_type", frequency_type);
+
   // set opacity group bounds: gray goes from 0 to infty
   std::vector<Real> opac_grp_bnds = {0.0, std::numeric_limits<Real>::infinity()};
   // reset to parsed input (for non-tabular opacity models) for multigroup
@@ -136,57 +138,71 @@ std::shared_ptr<StateDescriptor> Initialize(ParameterInput *pin) {
         singularity::photons::MeanNonCGSUnits<singularity::photons::MeanOpacityBase>(
             singularity::photons::MeanOpacityBase(table_filename), time_scale, mass_scale,
             length_scale, temperature_scale);
-  } else if (abs_model == "none") {
-    // none = 0 absorption
-    auto model = singularity::photons::Gray(0.0);
-    mopacity =
-        singularity::photons::MeanNonCGSUnits<singularity::photons::MeanOpacityBase>(
-            singularity::photons::MeanOpacityBase(model, -1., 1., 2, -1., 1., 2,
-                                                  opac_grp_bnds, NG),
-            time_scale, mass_scale, length_scale, temperature_scale);
-  } else if (abs_model == "constant") {
-    Real kappa = pin->GetReal("mcblock/absorption", "constant_value");
-    auto model = singularity::photons::Gray(kappa);
-    mopacity =
-        singularity::photons::MeanNonCGSUnits<singularity::photons::MeanOpacityBase>(
-            singularity::photons::MeanOpacityBase(model, -1., 1., 2, -1., 1., 2,
-                                                  opac_grp_bnds, NG),
-            time_scale, mass_scale, length_scale, temperature_scale);
-  } else if (abs_model == "powerlaw") {
-    // NOTE: reference values (ref) and offsets (off) must always be in cgs units
-    const Real kappa0 = pin->GetReal("mcblock/absorption", "kappa0");
-    const Real rho_exp = pin->GetReal("mcblock/absorption", "rho_exp");
-    const Real temp_exp = pin->GetReal("mcblock/absorption", "temp_exp");
-    const Real nu_exp = pin->GetReal("mcblock/absorption", "nu_exp");
-    const Real nu_ref = pin->GetReal("mcblock/absorption", "nu_ref");
-    const Real nu_off = pin->GetOrAddReal("mcblock/absorption", "nu_off", 0.0);
-    const Real rho_ref = pin->GetReal("mcblock/absorption", "rho_ref");
-    const Real rho_off = pin->GetOrAddReal("mcblock/absorption", "rho_off", 0.0);
-    const Real temp_ref = pin->GetReal("mcblock/absorption", "temp_ref");
-    const Real temp_off = pin->GetOrAddReal("mcblock/absorption", "temp_off", 0.0);
-    const bool do_stim_emit =
-        pin->GetOrAddBoolean("mcblock/absorption", "do_stim_emit", false);
-    auto model = singularity::photons::PowerLaw(kappa0, rho_exp, temp_exp, nu_exp, nu_ref,
-                                                nu_off, rho_ref, rho_off, temp_ref,
-                                                temp_off, do_stim_emit);
-    mopacity =
-        singularity::photons::MeanNonCGSUnits<singularity::photons::MeanOpacityBase>(
-            singularity::photons::MeanOpacityBase(model, -1., 1., 2, -1., 1., 2,
-                                                  opac_grp_bnds, NG),
-            time_scale, mass_scale, length_scale, temperature_scale);
-  } else if (abs_model == "ep_bremss") {
-    auto model = singularity::photons::EPBremss();
-    mopacity =
-        singularity::photons::MeanNonCGSUnits<singularity::photons::MeanOpacityBase>(
-            singularity::photons::MeanOpacityBase(model, -1., 1., 2, -1., 1., 2,
-                                                  opac_grp_bnds, NG),
-            time_scale, mass_scale, length_scale, temperature_scale);
   } else {
-    // nothing else supported for now
-    PARTHENON_FAIL("Invalid absorption opacity model selected!");
+
+    // Instantiate mean absorption opacity object (i.e., table)
+    const Real lRhoMin_a = pin->GetOrAddReal("mcblock/absorption", "lRhoMin", -1.0);
+    const Real lRhoMax_a = pin->GetOrAddReal("mcblock/absorption", "lRhoMax", 1.0);
+    const int NRho_a = pin->GetOrAddInteger("mcblock/absorption", "NRho", 2);
+    const Real lTMin_a = pin->GetOrAddReal("mcblock/absorption", "lTMin", -1.0);
+    const Real lTMax_a = pin->GetOrAddReal("mcblock/absorption", "lTMax", 1.0);
+    const int NT_a = pin->GetOrAddInteger("mcblock/absorption", "NT", 2);
+
+    if (abs_model == "none") {
+      // none = 0 absorption
+      auto model = singularity::photons::Gray(0.0);
+      mopacity =
+          singularity::photons::MeanNonCGSUnits<singularity::photons::MeanOpacityBase>(
+              singularity::photons::MeanOpacityBase(model, lRhoMin_a, lRhoMax_a, NRho_a,
+                                                    lTMin_a, lTMax_a, NT_a, opac_grp_bnds,
+                                                    NG),
+              time_scale, mass_scale, length_scale, temperature_scale);
+    } else if (abs_model == "constant") {
+      Real kappa = pin->GetReal("mcblock/absorption", "constant_value");
+      auto model = singularity::photons::Gray(kappa);
+      mopacity =
+          singularity::photons::MeanNonCGSUnits<singularity::photons::MeanOpacityBase>(
+              singularity::photons::MeanOpacityBase(model, lRhoMin_a, lRhoMax_a, NRho_a,
+                                                    lTMin_a, lTMax_a, NT_a, opac_grp_bnds,
+                                                    NG),
+              time_scale, mass_scale, length_scale, temperature_scale);
+    } else if (abs_model == "powerlaw") {
+      // NOTE: reference values (ref) and offsets (off) must always be in cgs units
+      const Real kappa0 = pin->GetReal("mcblock/absorption", "kappa0");
+      const Real rho_exp = pin->GetReal("mcblock/absorption", "rho_exp");
+      const Real temp_exp = pin->GetReal("mcblock/absorption", "temp_exp");
+      const Real nu_exp = pin->GetReal("mcblock/absorption", "nu_exp");
+      const Real nu_ref = pin->GetReal("mcblock/absorption", "nu_ref");
+      const Real nu_off = pin->GetOrAddReal("mcblock/absorption", "nu_off", 0.0);
+      const Real rho_ref = pin->GetReal("mcblock/absorption", "rho_ref");
+      const Real rho_off = pin->GetOrAddReal("mcblock/absorption", "rho_off", 0.0);
+      const Real temp_ref = pin->GetReal("mcblock/absorption", "temp_ref");
+      const Real temp_off = pin->GetOrAddReal("mcblock/absorption", "temp_off", 0.0);
+      const bool do_stim_emit =
+          pin->GetOrAddBoolean("mcblock/absorption", "do_stim_emit", false);
+      auto model = singularity::photons::PowerLaw(kappa0, rho_exp, temp_exp, nu_exp,
+                                                  nu_ref, nu_off, rho_ref, rho_off,
+                                                  temp_ref, temp_off, do_stim_emit);
+      mopacity =
+          singularity::photons::MeanNonCGSUnits<singularity::photons::MeanOpacityBase>(
+              singularity::photons::MeanOpacityBase(model, lRhoMin_a, lRhoMax_a, NRho_a,
+                                                    lTMin_a, lTMax_a, NT_a, opac_grp_bnds,
+                                                    NG),
+              time_scale, mass_scale, length_scale, temperature_scale);
+    } else if (abs_model == "ep_bremss") {
+      auto model = singularity::photons::EPBremss();
+      mopacity =
+          singularity::photons::MeanNonCGSUnits<singularity::photons::MeanOpacityBase>(
+              singularity::photons::MeanOpacityBase(model, lRhoMin_a, lRhoMax_a, NRho_a,
+                                                    lTMin_a, lTMax_a, NT_a, opac_grp_bnds,
+                                                    NG),
+              time_scale, mass_scale, length_scale, temperature_scale);
+    } else {
+      // nothing else supported for now
+      PARTHENON_FAIL("Invalid absorption opacity model selected!");
+    }
   }
 
-  pkg->AddParam<>("frequency_type", frequency_type);
   pkg->AddParam<>("mopacity_h", mopacity);
 
   // Scattering opacity model
@@ -197,20 +213,30 @@ std::shared_ptr<StateDescriptor> Initialize(ParameterInput *pin) {
   std::string sct_model =
       pin->GetOrAddString("mcblock/scattering", "opacity_model", "none");
 
+  // Instantiate mean scattering opacity object (i.e., table)
+  const Real lRhoMin_s = pin->GetOrAddReal("mcblock/scattering", "lRhoMin", -1.0);
+  const Real lRhoMax_s = pin->GetOrAddReal("mcblock/scattering", "lRhoMax", 1.0);
+  const int NRho_s = pin->GetOrAddInteger("mcblock/scattering", "NRho", 2);
+  const Real lTMin_s = pin->GetOrAddReal("mcblock/scattering", "lTMin", -1.0);
+  const Real lTMax_s = pin->GetOrAddReal("mcblock/scattering", "lTMax", 1.0);
+  const int NT_s = pin->GetOrAddInteger("mcblock/scattering", "NT", 2);
+
   if (sct_model == "none") {
     auto smodel = singularity::photons::GrayS(0.0, apm);
     mscattering =
         singularity::photons::MeanNonCGSUnitsS<singularity::photons::MeanSOpacityBase>(
-            singularity::photons::MeanSOpacityBase(smodel, -1., 1., 2, -1., 1., 2,
-                                                   opac_grp_bnds, NG),
+            singularity::photons::MeanSOpacityBase(smodel, lRhoMin_s, lRhoMax_s, NRho_s,
+                                                   lTMin_s, lTMax_s, NT_s, opac_grp_bnds,
+                                                   NG),
             time_scale, mass_scale, length_scale, temperature_scale);
   } else if (sct_model == "constant") {
     Real kappa_s = pin->GetReal("mcblock/scattering", "constant_value");
     auto smodel = singularity::photons::GrayS(kappa_s, apm);
     mscattering =
         singularity::photons::MeanNonCGSUnitsS<singularity::photons::MeanSOpacityBase>(
-            singularity::photons::MeanSOpacityBase(smodel, -1., 1., 2, -1., 1., 2,
-                                                   opac_grp_bnds, NG),
+            singularity::photons::MeanSOpacityBase(smodel, lRhoMin_s, lRhoMax_s, NRho_s,
+                                                   lTMin_s, lTMax_s, NT_s, opac_grp_bnds,
+                                                   NG),
             time_scale, mass_scale, length_scale, temperature_scale);
   } else if (sct_model == "powerlaw") {
     // NOTE: reference values (ref) and offsets (off) must always be in cgs units
@@ -229,8 +255,9 @@ std::shared_ptr<StateDescriptor> Initialize(ParameterInput *pin) {
                                         rho_ref, rho_off, temp_ref, temp_off);
     mscattering =
         singularity::photons::MeanNonCGSUnitsS<singularity::photons::MeanSOpacityBase>(
-            singularity::photons::MeanSOpacityBase(smodel, -1., 1., 2, -1., 1., 2,
-                                                   opac_grp_bnds, NG),
+            singularity::photons::MeanSOpacityBase(smodel, lRhoMin_s, lRhoMax_s, NRho_s,
+                                                   lTMin_s, lTMax_s, NT_s, opac_grp_bnds,
+                                                   NG),
             time_scale, mass_scale, length_scale, temperature_scale);
   } else {
     PARTHENON_FAIL("Invalid scattering opacity model selected!");

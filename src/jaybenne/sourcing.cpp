@@ -193,13 +193,15 @@ TaskStatus SourcePhotons(T *md, const Real t_start, const Real dt) {
                   // calculate bin width (assuming log bin width)
                   // NOTE: frequency is used instead of group index to permit unequality
                   // between transport and MeanOpacity frequency grids (maybe not useful)
-                  Real abs = mopac.AbsorptionCoefficient(rho, temp, nu_binsd(0), gmoded);
+                  Real abs =
+                      mopac.AbsorptionCoefficientFromNu(rho, temp, nu_binsd(0), gmoded);
                   Real ee = hd * nu_binsd(0);
                   Real dee = dlnud * ee;
                   Real B = jaybenne::midpoint_Planck(kboltd * temp, ee, dee);
                   vmesh(b, fj::emission_cdf(0), k, j, i) = abs * B;
                   for (int n = 1; n < n_nubinsd; n++) {
-                    abs = mopac.AbsorptionCoefficient(rho, temp, nu_binsd(n), gmoded);
+                    abs =
+                        mopac.AbsorptionCoefficientFromNu(rho, temp, nu_binsd(n), gmoded);
                     ee = hd * nu_binsd(n);
                     dee = dlnud * ee;
                     B = jaybenne::midpoint_Planck(kboltd * temp, ee, dee);
