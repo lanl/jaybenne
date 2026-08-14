@@ -109,10 +109,16 @@ std::shared_ptr<StateDescriptor> Initialize(ParameterInput *pin) {
 
   pkg->AddParam<>("frequency_type", frequency_type);
 
+  // get absorption model and check if compatible with use_opac_groups=true
+  std::string abs_model = pin->GetString("mcblock/absorption", "opacity_model");
+  const bool use_opac_grps = pin->GetOrAddBoolean("jaybenne", "use_opac_groups", false);
+  PARTHENON_REQUIRE(use_opac_grps ? abs_model == "table" : true,
+                    "Opacity group bounds can only be used with abs_model=table!");
+
   // set opacity group bounds: gray goes from 0 to infty
   std::vector<Real> opac_grp_bnds = {0.0, std::numeric_limits<Real>::infinity()};
   // reset to parsed input (for non-tabular opacity models) for multigroup
-  if (frequency_type == FrequencyType::multigroup) {
+  if (frequency_type == FrequencyType::multigroup && !use_opac_grps) {
     const Real numin = pin->GetReal("jaybenne", "numin"); // in Hz
     const Real numax = pin->GetReal("jaybenne", "numax"); // in Hz
     const int n_nubins = pin->GetInteger("jaybenne", "n_nubins");
@@ -129,7 +135,6 @@ std::shared_ptr<StateDescriptor> Initialize(ParameterInput *pin) {
 
   // Absorption opacity model
   MeanOpacity mopacity;
-  std::string abs_model = pin->GetString("mcblock/absorption", "opacity_model");
 
   if (abs_model == "table") {
     // table read from file
@@ -215,7 +220,6 @@ std::shared_ptr<StateDescriptor> Initialize(ParameterInput *pin) {
 
   // ensure analytic scattering uses tabular absorption group bounds
   // TODO: table scattering opacity
-  const bool use_opac_grps = pin->GetOrAddBoolean("jaybenne", "use_opac_groups", false);
   if (use_opac_grps && abs_model == "table") {
     opac_grp_bnds = mopacity.GetGroupBounds();
     NG = mopacity.ngroups();
