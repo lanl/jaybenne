@@ -500,8 +500,7 @@ TaskStatus UpdateDerivedTransportFieldsImpl(MeshData<Real> *md, const Real dt) {
           emis = 0.0;
           Real plnk = 0.0;
           for (int n = 0; n < n_nubinsd; n++) {
-            const Real abs =
-                mopac.AbsorptionCoefficientFromNu(rho, temp, nu_binsd(n), gmoded);
+            const Real abs = mopac.AbsorptionCoefficientFromNu(rho, temp, nu_binsd(n));
             const Real ee = hd * nu_binsd(n);
             const Real dee = dlnud * ee;
             const Real B = jaybenne::midpoint_Planck(kboltd * temp, ee, dee);
