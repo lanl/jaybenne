@@ -355,16 +355,46 @@ std::shared_ptr<StateDescriptor> Initialize(ParameterInput *pin, MeanOpacity &mo
     PARTHENON_REQUIRE(mopacity.ngroups() == mscattering.ngroups(),
                       "mopacity and mscattering have unequal group numbers");
 
-    // Frequency discretization
-    auto time = units.time;
-    Real numin = pin->GetReal(block_name, "numin"); // in Hz
-    Real numax = pin->GetReal(block_name, "numax"); // in Hz
-    int n_nubins = pin->GetInteger(block_name, "n_nubins");
-    pkg->AddParam<>("n_nubins", n_nubins);
+    const bool use_opac_grps = pin->GetOrAddBoolean(block_name, "use_opac_groups", false);
 
-    // assume units.time = [s/code time] = [code freq/Hz]
-    numin *= time; // in code units
-    numax *= time; // in code units
+    // MG data to set
+    // TODO: change when log nu_grid no longer assumed
+    int n_nubins = -1;
+    Real numin = -1.0;
+    Real numax = -1.0;
+
+    if (use_opac_grps) {
+      // use opacity group bounds
+      PARTHENON_REQUIRE(mopacity.HasGroupBounds(),
+                        "mopacity does not have group bounds!");
+      PARTHENON_REQUIRE(mscattering.HasGroupBounds(),
+                        "mscattering does not have group bounds!");
+
+      // TODO: consider storing and using bounds instead of nu_grid
+      std::vector<Real> bounds = mopacity.GetGroupBounds();
+      PARTHENON_REQUIRE(bounds == mscattering.GetGroupBounds(),
+                        "mopacity and mscattering have different group structures!");
+
+      n_nubins = mopacity.ngroups();
+      PARTHENON_REQUIRE(n_nubins == static_cast<int>(bounds.size()) - 1,
+                        "mopacity.ngroups != mopacity.GetGroupBounds().size() - 1");
+
+      // should be in code units
+      numin = bounds[0];
+      numax = bounds[n_nubins];
+
+    } else {
+      // use jaybenne group bounds
+      // Frequency discretization
+      auto time = units.time;
+      numin = pin->GetReal(block_name, "numin"); // in Hz
+      numax = pin->GetReal(block_name, "numax"); // in Hz
+      n_nubins = pin->GetInteger(block_name, "n_nubins");
+
+      // assume units.time = [s/code time] = [code freq/Hz]
+      numin *= time; // in code units
+      numax *= time; // in code units
+    }
 
     // Construct and store frequency grid
     // NOTE: these are group interior points, not edges
@@ -374,15 +404,16 @@ std::shared_ptr<StateDescriptor> Initialize(ParameterInput *pin, MeanOpacity &mo
     for (int n = 0; n < n_nubins; ++n) {
       nu_grid[n] = numin * std::exp((n + 0.5) * dlnu);
     }
+
     // store the grid in the parameter input
+    pkg->AddParam<>("n_nubins", n_nubins);
     pkg->AddParam<>("dlnu", dlnu);
     pkg->AddParam<>("nu_grid", nu_grid);
+    pkg->AddParam<>("frequency_type", FrequencyType::multigroup);
 
     // Emission CDF
     Metadata m_onecopy({Metadata::Cell, Metadata::OneCopy}, std::vector<int>({n_nubins}));
     pkg->AddField(field::jaybenne::emission_cdf::name(), m_onecopy);
-
-    pkg->AddParam<>("frequency_type", FrequencyType::multigroup);
 
   } else {
     // number of groups is 1 - assume gray

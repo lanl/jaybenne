@@ -125,7 +125,7 @@ std::shared_ptr<StateDescriptor> Initialize(ParameterInput *pin) {
       opac_grp_bnds[n] = numin * std::exp(n * dlnu);
     }
   }
-  const int NG = static_cast<int>(opac_grp_bnds.size()) - 1;
+  int NG = static_cast<int>(opac_grp_bnds.size()) - 1;
 
   // Absorption opacity model
   MeanOpacity mopacity;
@@ -212,6 +212,14 @@ std::shared_ptr<StateDescriptor> Initialize(ParameterInput *pin) {
   MeanScattering mscattering;
   std::string sct_model =
       pin->GetOrAddString("mcblock/scattering", "opacity_model", "none");
+
+  // ensure analytic scattering uses tabular absorption group bounds
+  // TODO: table scattering opacity
+  const bool use_opac_grps = pin->GetOrAddBoolean("jaybenne", "use_opac_groups", false);
+  if (use_opac_grps && abs_model == "table") {
+    opac_grp_bnds = mopacity.GetGroupBounds();
+    NG = mopacity.ngroups();
+  }
 
   // Instantiate mean scattering opacity object (i.e., table)
   const Real lRhoMin_s = pin->GetOrAddReal("mcblock/scattering", "lRhoMin", -1.0);
