@@ -298,11 +298,12 @@ Initialize_impl(ParameterInput *pin, EOS &eos,
   // Swarm and swarm variables
   Metadata swarm_metadata({Metadata::Provides, Metadata::None, Metadata::Restart});
   pkg->AddSwarm(photons_swarm_name, swarm_metadata);
+  Metadata mint({Metadata::Integer});
+  pkg->AddSwarmValue(particle::photons::inu::name(), photons_swarm_name, mint);
   Metadata mreal({Metadata::Real});
   pkg->AddSwarmValue(particle::photons::time::name(), photons_swarm_name, mreal);
   pkg->AddSwarmValue(particle::photons::weight::name(), photons_swarm_name, mreal);
   pkg->AddSwarmValue(particle::photons::fraction::name(), photons_swarm_name, mreal);
-  pkg->AddSwarmValue(particle::photons::energy::name(), photons_swarm_name, mreal);
   Metadata mrealv({Metadata::Real, Metadata::Vector}, std::vector<int>{3});
   pkg->AddSwarmValue(particle::photons::v::name(), photons_swarm_name, mrealv);
   Metadata mintv({Metadata::Integer, Metadata::Vector}, std::vector<int>{3});
@@ -531,7 +532,7 @@ TaskStatus UpdateDerivedTransportFieldsImpl(MeshData<Real> *md, const Real dt) {
           emis = 0.0;
           Real plnk = 0.0;
           for (int n = 0; n < n_nubinsd; n++) {
-            const Real abs = mopac.AbsorptionCoefficientFromNu(rho, temp, nu_binsd(n));
+            const Real abs = mopac.AbsorptionCoefficient(rho, temp, n);
             const Real ee = hd * nu_binsd(n);
             const Real dee = dlnud * ee;
             const Real B = jaybenne::midpoint_Planck(kboltd * temp, ee, dee);

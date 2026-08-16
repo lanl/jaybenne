@@ -193,14 +193,14 @@ TaskStatus SourcePhotons(T *md, const Real t_start, const Real dt) {
                   // calculate bin width (assuming log bin width)
                   // NOTE: frequency is used instead of group index to permit unequality
                   // between transport and MeanOpacity frequency grids (maybe not useful)
-                  Real abs = mopac.AbsorptionCoefficientFromNu(rho, temp, nu_binsd(0));
+                  Real abs = mopac.AbsorptionCoefficient(rho, temp, 0);
                   Real ee = hd * nu_binsd(0);
                   Real dee = dlnud * ee;
                   Real B = jaybenne::midpoint_Planck(kboltd * temp, ee, dee);
-                  Real plnk = 0.0;
+                  Real plnk = B;
                   vmesh(b, fj::emission_cdf(0), k, j, i) = abs * B;
                   for (int n = 1; n < n_nubinsd; n++) {
-                    abs = mopac.AbsorptionCoefficientFromNu(rho, temp, nu_binsd(n));
+                    abs = mopac.AbsorptionCoefficient(rho, temp, n);
                     ee = hd * nu_binsd(n);
                     dee = dlnud * ee;
                     B = jaybenne::midpoint_Planck(kboltd * temp, ee, dee);
@@ -270,9 +270,9 @@ TaskStatus SourcePhotons(T *md, const Real t_start, const Real dt) {
 
   static auto pdesc_r =
       MakeSwarmPackDescriptor<swarm_position::x, swarm_position::y, swarm_position::z,
-                              ph::time, ph::v, ph::energy, ph::weight, ph::fraction>(
+                              ph::time, ph::v, ph::weight, ph::fraction>(
           photons_swarm_name);
-  static auto pdesc_i = MakeSwarmPackDescriptor<ph::ijk>(photons_swarm_name);
+  static auto pdesc_i = MakeSwarmPackDescriptor<ph::ijk, ph::inu>(photons_swarm_name);
   auto ppack_r = pdesc_r.GetPack(md);
   auto ppack_i = pdesc_i.GetPack(md);
 
@@ -340,7 +340,7 @@ TaskStatus SourcePhotons(T *md, const Real t_start, const Real dt) {
           const Real &sie = vmesh(b, fjh::sie(), k, j, i);
           const Real temp = eos.TemperatureFromDensityInternalEnergy(rho, sie);
           if constexpr (FT == FrequencyType::gray) {
-            ppack_r(b, ph::energy(), n) = sample_Planck_energy(rng_gen, kboltd, temp);
+            ppack_i(b, ph::inu(), n) = 0;
           } else if constexpr (FT == FrequencyType::multigroup) {
             // Sample energy (particle frequency) from CDF
             const Real rand = rng_gen.drand();
@@ -350,7 +350,7 @@ TaskStatus SourcePhotons(T *md, const Real t_start, const Real dt) {
                 break;
               }
             }
-            ppack_r(b, ph::energy(), n) = hd * nu_binsd(g);
+            ppack_i(b, ph::inu(), n) = g;
           }
 
           if constexpr (ST == SourceType::emission) {

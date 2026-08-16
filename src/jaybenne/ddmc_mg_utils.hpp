@@ -59,10 +59,10 @@ calc_ddmc_mg_leak_numdenom(const OP &abs, const SC &sct, const ddmc_mg_leak_args
   for (int n = 0; n < dmg.n_nubins; ++n) {
 
     // evaluate face opacities at nu_bins(n)
-    const Real ss_l = sct.ScatteringCoefficientFromNu(dmg.rho_l, dmg.temp_l, nu_bins(n));
-    const Real aa_l = abs.AbsorptionCoefficientFromNu(dmg.rho_l, dmg.temp_l, nu_bins(n));
-    const Real ss_u = sct.ScatteringCoefficientFromNu(dmg.rho_u, dmg.temp_u, nu_bins(n));
-    const Real aa_u = abs.AbsorptionCoefficientFromNu(dmg.rho_u, dmg.temp_u, nu_bins(n));
+    const Real ss_l = sct.ScatteringCoefficient(dmg.rho_l, dmg.temp_l, n);
+    const Real aa_l = abs.AbsorptionCoefficient(dmg.rho_l, dmg.temp_l, n);
+    const Real ss_u = sct.ScatteringCoefficient(dmg.rho_u, dmg.temp_u, n);
+    const Real aa_u = abs.AbsorptionCoefficient(dmg.rho_u, dmg.temp_u, n);
 
     // calculate optical thicknesses from lower and upper cell
     const Real tau_lmin = dmg.dx_lmin * (ss_l + aa_l);
@@ -114,11 +114,10 @@ KOKKOS_FORCEINLINE_FUNCTION Real calc_ddmc_mg_leakprob(const OP &abs, const SC &
 
 //----------------------------------------------------------------------------------------
 template <typename OP, typename SC>
-KOKKOS_FORCEINLINE_FUNCTION Real sample_leakage_group(const OP &abs, const SC &sct,
-                                                      const ddmc_mg_leak_args &dmg,
-                                                      const ParArray1D<Real> &nu_bins,
-                                                      const bool &use_lo,
-                                                      RngGen &rng_gen) {
+KOKKOS_FORCEINLINE_FUNCTION int
+sample_leakage_group(const OP &abs, const SC &sct, const ddmc_mg_leak_args &dmg,
+                     const ParArray1D<Real> &nu_bins, const bool &use_lo,
+                     RngGen &rng_gen) {
 
   // first get CDF totals
   const auto leak_sum_pair = calc_ddmc_mg_leak_numdenom(abs, sct, dmg, nu_bins, use_lo);
@@ -136,16 +135,16 @@ KOKKOS_FORCEINLINE_FUNCTION Real sample_leakage_group(const OP &abs, const SC &s
 
   // sample
   const Real rand1 = leak_tot_sum * rng_gen.drand();
-  Real ee_sampled = -1.0; // poisoned initialization
+  int inu_sampled = -1; // poisoned initialization
 
   // integrate
   for (int n = 0; n < dmg.n_nubins; ++n) {
 
     // evaluate face opacities at nu_bins(n)
-    const Real ss_l = sct.ScatteringCoefficientFromNu(dmg.rho_l, dmg.temp_l, nu_bins(n));
-    const Real aa_l = abs.AbsorptionCoefficientFromNu(dmg.rho_l, dmg.temp_l, nu_bins(n));
-    const Real ss_u = sct.ScatteringCoefficientFromNu(dmg.rho_u, dmg.temp_u, nu_bins(n));
-    const Real aa_u = abs.AbsorptionCoefficientFromNu(dmg.rho_u, dmg.temp_u, nu_bins(n));
+    const Real ss_l = sct.ScatteringCoefficient(dmg.rho_l, dmg.temp_l, n);
+    const Real aa_l = abs.AbsorptionCoefficient(dmg.rho_l, dmg.temp_l, n);
+    const Real ss_u = sct.ScatteringCoefficient(dmg.rho_u, dmg.temp_u, n);
+    const Real aa_u = abs.AbsorptionCoefficient(dmg.rho_u, dmg.temp_u, n);
 
     // calculate optical thicknesses from lower and upper cell
     const Real tau_lmin = dmg.dx_lmin * (ss_l + aa_l);
@@ -174,16 +173,16 @@ KOKKOS_FORCEINLINE_FUNCTION Real sample_leakage_group(const OP &abs, const SC &s
       planck_sum += bg;
       leak_sum += bg * Pg;
       if (leak_sum > rand1) {
-        ee_sampled = ee;
+        inu_sampled = n;
         break;
       }
     }
   }
 
-  PARTHENON_DEBUG_REQUIRE(ee_sampled > 0.0, "ee_sampled <= 0.0");
+  PARTHENON_DEBUG_REQUIRE(inu_sampled >= 0, "inu_sampled < 0");
 
   // return sampled energy value (in units of energy)
-  return ee_sampled;
+  return inu_sampled;
 }
 
 //----------------------------------------------------------------------------------------
@@ -202,8 +201,8 @@ calc_ddmc_mg_probs(const OP &abs, const SC &sct, const ddmc_mg_cell_args &dmgc,
   for (int n = 0; n < dmgc.n_nubins; ++n) {
 
     // evaluate face opacities at nu_bins(n)
-    const Real ss = sct.ScatteringCoefficientFromNu(dmgc.rho, dmgc.temp, nu_bins(n));
-    const Real aa = abs.AbsorptionCoefficientFromNu(dmgc.rho, dmgc.temp, nu_bins(n));
+    const Real ss = sct.ScatteringCoefficient(dmgc.rho, dmgc.temp, n);
+    const Real aa = abs.AbsorptionCoefficient(dmgc.rho, dmgc.temp, n);
 
     // convert to energy units for Planck integral
     const Real ee = dmgc.hd * nu_bins(n);
@@ -239,9 +238,10 @@ calc_ddmc_mg_probs(const OP &abs, const SC &sct, const ddmc_mg_cell_args &dmgc,
 // sample out-scatter IMC group
 // NOTE(MGDDMC): this routine is assuming Kirchhoff's Law for emissivity (LTE)
 template <typename OP, typename SC>
-KOKKOS_FORCEINLINE_FUNCTION Real sample_ddmc2imc_outscatter(
-    const OP &abs, const SC &sct, const ddmc_mg_cell_args &dmgc,
-    const ParArray1D<Real> &nu_bins, RngGen &rng_gen, const bool stay_in = false) {
+KOKKOS_FORCEINLINE_FUNCTION int
+sample_ddmc2imc_outscatter(const OP &abs, const SC &sct, const ddmc_mg_cell_args &dmgc,
+                           const ParArray1D<Real> &nu_bins, RngGen &rng_gen,
+                           const bool stay_in = false) {
 
   Real scat_out_tot_sum = 0.0;
 
@@ -249,8 +249,8 @@ KOKKOS_FORCEINLINE_FUNCTION Real sample_ddmc2imc_outscatter(
   for (int n = 0; n < dmgc.n_nubins; ++n) {
 
     // evaluate face opacities at nu_bins(n)
-    const Real ss = sct.ScatteringCoefficientFromNu(dmgc.rho, dmgc.temp, nu_bins(n));
-    const Real aa = abs.AbsorptionCoefficientFromNu(dmgc.rho, dmgc.temp, nu_bins(n));
+    const Real ss = sct.ScatteringCoefficient(dmgc.rho, dmgc.temp, n);
+    const Real aa = abs.AbsorptionCoefficient(dmgc.rho, dmgc.temp, n);
 
     // check group exclusion
     const bool is_ddmc_grp = dmgc.dx_min * (ss + aa) > dmgc.tau_ddmc;
@@ -265,7 +265,7 @@ KOKKOS_FORCEINLINE_FUNCTION Real sample_ddmc2imc_outscatter(
 
   // sample
   const Real rand1 = scat_out_tot_sum * rng_gen.drand();
-  Real ee_sampled = -1.0; // poisoned initialization
+  int inu_sampled = -1; // poisoned initialization
 
   Real abs_sum = 0.0;
 
@@ -273,8 +273,8 @@ KOKKOS_FORCEINLINE_FUNCTION Real sample_ddmc2imc_outscatter(
   for (int n = 0; n < dmgc.n_nubins; ++n) {
 
     // evaluate face opacities at nu_bins(n)
-    const Real ss = sct.ScatteringCoefficientFromNu(dmgc.rho, dmgc.temp, nu_bins(n));
-    const Real aa = abs.AbsorptionCoefficientFromNu(dmgc.rho, dmgc.temp, nu_bins(n));
+    const Real ss = sct.ScatteringCoefficient(dmgc.rho, dmgc.temp, n);
+    const Real aa = abs.AbsorptionCoefficient(dmgc.rho, dmgc.temp, n);
 
     // check group exclusion
     const bool is_ddmc_grp = dmgc.dx_min * (ss + aa) > dmgc.tau_ddmc;
@@ -291,13 +291,14 @@ KOKKOS_FORCEINLINE_FUNCTION Real sample_ddmc2imc_outscatter(
       abs_sum += bg * aa;
 
       if (abs_sum > rand1) {
-        ee_sampled = ee;
+        inu_sampled = n;
         break;
       }
     }
   }
 
-  return ee_sampled;
+  PARTHENON_DEBUG_REQUIRE(inu_sampled >= 0, "inu_sampled < 0");
+  return inu_sampled;
 }
 
 } // namespace jaybenne

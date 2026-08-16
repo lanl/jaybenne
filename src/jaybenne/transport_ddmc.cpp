@@ -78,9 +78,9 @@ TaskStatus TransportPhotons_DDMC(MeshData<Real> *md, const Real t_start, const R
 
   // Create SwarmPacks
   static auto pdesc_r =
-      MakeSwarmPackDescriptor<sp::x, sp::y, sp::z, ph::v, ph::energy, ph::weight,
-                              ph::fraction, ph::time>(photons_swarm_name);
-  static auto pdesc_i = MakeSwarmPackDescriptor<ph::ijk>(photons_swarm_name);
+      MakeSwarmPackDescriptor<sp::x, sp::y, sp::z, ph::v, ph::weight, ph::fraction,
+                              ph::time>(photons_swarm_name);
+  static auto pdesc_i = MakeSwarmPackDescriptor<ph::ijk, ph::inu>(photons_swarm_name);
   auto ppack_r = pdesc_r.GetPack(md);
   auto ppack_i = pdesc_i.GetPack(md);
 
@@ -127,7 +127,7 @@ TaskStatus TransportPhotons_DDMC(MeshData<Real> *md, const Real t_start, const R
           Real &vz = ppack_r(b, ph::v(2), n);
           Real &ww = ppack_r(b, ph::weight(), n);
           Real &fraction = ppack_r(b, ph::fraction(), n);
-          Real &ee = ppack_r(b, ph::energy(), n);
+          int &inu = ppack_i(b, ph::inu(), n);
 
           // Position and logical location of particle
           Real &x = ppack_r(b, sp::x(), n);
@@ -178,8 +178,8 @@ TaskStatus TransportPhotons_DDMC(MeshData<Real> *md, const Real t_start, const R
               rho = vmesh(b, fjh::density(), kp, jp, ip);
               const Real &sie = vmesh(b, fjh::sie(), kp, jp, ip);
               temp = eost.TemperatureFromDensityInternalEnergy(rho, sie);
-              ss = scatter.ScatteringCoefficientFromNu(rho, temp, hinvd * ee);
-              aa = opac.AbsorptionCoefficientFromNu(rho, temp, hinvd * ee);
+              ss = scatter.ScatteringCoefficient(rho, temp, inu);
+              aa = opac.AbsorptionCoefficient(rho, temp, inu);
             }
 
             // reset collision indicators
@@ -312,8 +312,8 @@ TaskStatus TransportPhotons_DDMC(MeshData<Real> *md, const Real t_start, const R
                                          temp};
                   // clang-format on
                   // the final argument tells it to stay in DDMC groups
-                  ee = sample_ddmc2imc_outscatter(opac, scatter, dmgc, nu_bins, rng_gen,
-                                                  true);
+                  inu = sample_ddmc2imc_outscatter(opac, scatter, dmgc, nu_bins, rng_gen,
+                                                   true);
                 }
 
                 // NOTE: these ddmc_mg_leak_args do not use adjacent cell, so
@@ -370,7 +370,7 @@ TaskStatus TransportPhotons_DDMC(MeshData<Real> *md, const Real t_start, const R
                   // clang-format off
 
                   // sample particle frequency (energy units)
-                  ee = sample_leakage_group(opac, scatter, dmg, nu_binsd, use_lo, rng_gen);
+                  inu = sample_leakage_group(opac, scatter, dmg, nu_binsd, use_lo, rng_gen);
                 }
               }
 
@@ -442,7 +442,7 @@ TaskStatus TransportPhotons_DDMC(MeshData<Real> *md, const Real t_start, const R
             if (is_scattered) {
 
               // form particle scattering argument struct
-              ptcl_scat_args psa{rng_gen, vv, vx, vy, vz, ee};
+              ptcl_scat_args psa{rng_gen, vv, vx, vy, vz, inu};
 
               // if multigroup eff scatter, redistribute frequency
               if constexpr (FT == FrequencyType::gray) {
@@ -463,7 +463,7 @@ TaskStatus TransportPhotons_DDMC(MeshData<Real> *md, const Real t_start, const R
                                          rho,
                                          temp};
                   // clang-format on
-                  ee = sample_ddmc2imc_outscatter(opac, scatter, dmgc, nu_bins, rng_gen);
+                  inu = sample_ddmc2imc_outscatter(opac, scatter, dmgc, nu_bins, rng_gen);
 
                   // resample particle direction
                   sample_vol_iso_dir(psa);

@@ -114,6 +114,12 @@ std::shared_ptr<StateDescriptor> Initialize(ParameterInput *pin) {
   const bool use_opac_grps = pin->GetOrAddBoolean("jaybenne", "use_opac_groups", false);
   PARTHENON_REQUIRE(use_opac_grps ? abs_model == "table" : true,
                     "Opacity group bounds can only be used with abs_model=table!");
+  // using particle groups instead of frequency means the group has to index the opacity
+  // table
+  // TODO: remove this requirement when table opacity can be re-interpolated at
+  // construction, to jaybenne-user-defined transport groups
+  PARTHENON_REQUIRE(abs_model == "table" ? use_opac_grps : true,
+                    "Opacity group bounds can only be used with abs_model=table!");
 
   // set opacity group bounds: gray goes from 0 to infty
   std::vector<Real> opac_grp_bnds = {0.0, std::numeric_limits<Real>::infinity()};
