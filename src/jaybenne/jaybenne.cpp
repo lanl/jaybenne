@@ -468,7 +468,7 @@ TaskStatus UpdateDerivedTransportFieldsImpl(MeshData<Real> *md, const Real dt) {
   Real dlnu = -1.0;
   Real h = -1.0;
   Real kbolt = -1.0;
-  Real ac = -1.0; // radiation constant times light speed (set below)
+  Real ac = 4.0 * (jbn->template Param<Real>("stefan_boltzmann"));
   std::vector<Real> nu_grid = JaybenneNull<std::vector<Real>>();
   ParArray1D<Real> nu_bins;
 
@@ -478,9 +478,7 @@ TaskStatus UpdateDerivedTransportFieldsImpl(MeshData<Real> *md, const Real dt) {
   // set opacity mode for emissivity used in Fleck factor
   const OpacityAveraging gmode = use_planck ? Planck : Rosseland;
 
-  if constexpr (FT == FrequencyType::gray) {
-    ac = 4.0 * (jbn->template Param<Real>("stefan_boltzmann"));
-  } else if constexpr (FT == FrequencyType::multigroup) {
+  if constexpr (FT == FrequencyType::multigroup) {
     PARTHENON_REQUIRE(!(use_planck && use_rosseland),
                       "Modified Fleck factor is not compatible with multigroup!");
     n_nubins = jbn->template Param<int>("n_nubins");
