@@ -47,12 +47,8 @@ TaskStatus SourcePhotons(T *md, const Real t_start, const Real dt) {
   Real dlnu = JaybenneNull<Real>();
   std::vector<Real> nu_grid = JaybenneNull<std::vector<Real>>();
   ParArray1D<Real> nu_bins;
-  MeanOpacity mopacity;
-  Opacity opacity;
-  if constexpr (FT == FrequencyType::gray) {
-    mopacity = jb_pkg->template Param<MeanOpacity>("mopacity_d");
-  } else if constexpr (FT == FrequencyType::multigroup) {
-    opacity = jb_pkg->template Param<Opacity>("opacity_d");
+  MeanOpacity mopacity = jb_pkg->template Param<MeanOpacity>("mopacity_d");
+  if constexpr (FT == FrequencyType::multigroup) {
     n_nubins = jb_pkg->template Param<int>("n_nubins");
     dlnu = jb_pkg->template Param<Real>("dlnu");
     nu_grid = jb_pkg->template Param<std::vector<Real>>("nu_grid");
@@ -160,13 +156,13 @@ TaskStatus SourcePhotons(T *md, const Real t_start, const Real dt) {
               [[maybe_unused]] const auto &vvd = vv;
               [[maybe_unused]] const auto &dtd = dt;
               [[maybe_unused]] auto mopac = mopacity;
-              [[maybe_unused]] auto opac = opacity;
               [[maybe_unused]] const auto n_nubinsd = n_nubins;
               [[maybe_unused]] const auto dlnud = dlnu;
               [[maybe_unused]] const auto &nu_binsd = nu_bins;
               Real erad = JaybenneNull<Real>();
+              const Real acT4 = 4.0 * sbd * SQR(SQR(temp));
               if constexpr (ST == SourceType::thermal) {
-                erad = (4.0 * sbd / vvd) * std::pow(temp, 4.0) * dv;
+                erad = (acT4 / vvd) * dv;
                 // leverage emission_cdf for initial Planck sampling
                 if constexpr (FT == FrequencyType::multigroup) {
                   // calculate bin width (assuming log bin width)
@@ -190,23 +186,33 @@ TaskStatus SourcePhotons(T *md, const Real t_start, const Real dt) {
               } else if constexpr (ST == SourceType::emission) {
                 Real emis = JaybenneNull<Real>();
                 if constexpr (FT == FrequencyType::gray) {
-                  const Real T4 = SQR(SQR(temp));
                   const Real abs = mopac.AbsorptionCoefficient(rho, temp, 0, gmoded);
-                  emis = abs * 4.0 * sbd * T4;
+                  emis = abs * acT4;
                 } else if constexpr (FT == FrequencyType::multigroup) {
                   // Construct emission CDF
                   // calculate bin width (assuming log bin width)
-                  Real dnu = dlnud * nu_binsd(0);
-                  vmesh(b, fj::emission_cdf(0), k, j, i) =
-                      opac.EmissivityPerNu(rho, temp, nu_binsd(0)) * dnu;
+                  // NOTE: frequency is used instead of group index to permit unequality
+                  // between transport and MeanOpacity frequency grids (maybe not useful)
+                  Real abs = mopac.AbsorptionCoefficient(rho, temp, 0);
+                  Real ee = hd * nu_binsd(0);
+                  Real dee = dlnud * ee;
+                  Real B = jaybenne::midpoint_Planck(kboltd * temp, ee, dee);
+                  Real plnk = B;
+                  vmesh(b, fj::emission_cdf(0), k, j, i) = abs * B;
                   for (int n = 1; n < n_nubinsd; n++) {
-                    dnu = dlnud * nu_binsd(n);
+                    abs = mopac.AbsorptionCoefficient(rho, temp, n);
+                    ee = hd * nu_binsd(n);
+                    dee = dlnud * ee;
+                    B = jaybenne::midpoint_Planck(kboltd * temp, ee, dee);
                     vmesh(b, fj::emission_cdf(n), k, j, i) =
-                        opac.EmissivityPerNu(rho, temp, nu_binsd(n)) * dnu +
-                        vmesh(b, fj::emission_cdf(n - 1), k, j, i);
+                        abs * B + vmesh(b, fj::emission_cdf(n - 1), k, j, i);
+                    plnk += B;
                   }
+                  PARTHENON_REQUIRE(plnk > 0.0, "Planck integral 0 in Fleck factor");
                   // Get total emissivity (before normalizing the CDF)
                   emis = vmesh(b, fj::emission_cdf(n_nubinsd - 1), k, j, i);
+                  emis /= plnk;
+                  emis *= acT4;
                   for (int n = 0; n < n_nubinsd; n++) {
                     // Normalize emission CDF
                     vmesh(b, fj::emission_cdf(n), k, j, i) /=
@@ -264,9 +270,9 @@ TaskStatus SourcePhotons(T *md, const Real t_start, const Real dt) {
 
   static auto pdesc_r =
       MakeSwarmPackDescriptor<swarm_position::x, swarm_position::y, swarm_position::z,
-                              ph::time, ph::v, ph::energy, ph::weight, ph::fraction>(
+                              ph::time, ph::v, ph::weight, ph::fraction>(
           photons_swarm_name);
-  static auto pdesc_i = MakeSwarmPackDescriptor<ph::ijk>(photons_swarm_name);
+  static auto pdesc_i = MakeSwarmPackDescriptor<ph::ijk, ph::inu>(photons_swarm_name);
   auto ppack_r = pdesc_r.GetPack(md);
   auto ppack_i = pdesc_i.GetPack(md);
 
@@ -334,7 +340,7 @@ TaskStatus SourcePhotons(T *md, const Real t_start, const Real dt) {
           const Real &sie = vmesh(b, fjh::sie(), k, j, i);
           const Real temp = eos.TemperatureFromDensityInternalEnergy(rho, sie);
           if constexpr (FT == FrequencyType::gray) {
-            ppack_r(b, ph::energy(), n) = sample_Planck_energy(rng_gen, kboltd, temp);
+            ppack_i(b, ph::inu(), n) = 0;
           } else if constexpr (FT == FrequencyType::multigroup) {
             // Sample energy (particle frequency) from CDF
             const Real rand = rng_gen.drand();
@@ -344,7 +350,7 @@ TaskStatus SourcePhotons(T *md, const Real t_start, const Real dt) {
                 break;
               }
             }
-            ppack_r(b, ph::energy(), n) = hd * nu_binsd(g);
+            ppack_i(b, ph::inu(), n) = g;
           }
 
           if constexpr (ST == SourceType::emission) {
