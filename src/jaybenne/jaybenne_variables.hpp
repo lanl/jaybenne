@@ -59,9 +59,9 @@ namespace photons {
 PAR_SWARMVAR(Real, particle.photons, time);
 PAR_SWARMVAR(Real, particle.photons, weight);
 PAR_SWARMVAR(Real, particle.photons, fraction);
-PAR_SWARMVAR(Real, particle.photons, energy);
 PAR_SWARMVAR(Real, particle.photons, v);
 PAR_SWARMVAR(int, particle.photons, ijk);
+PAR_SWARMVAR(int, particle.photons, inu);
 } // namespace photons
 } // namespace particle
 

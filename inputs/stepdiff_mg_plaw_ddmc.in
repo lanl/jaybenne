@@ -86,6 +86,8 @@ nu_ref = 8.0584e15
 nu_off = 4.5316e14
 rho_ref = 1.0
 temp_ref = 1.0
+lTMin = 4.0
+lTMax = 6.0
 
 <parthenon/output0>
 file_type = hdf5

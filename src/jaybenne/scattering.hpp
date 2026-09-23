@@ -35,7 +35,7 @@ struct ptcl_scat_args {
   Real &vx; // particle x/X1-direction speed
   Real &vy; // particle y/X2-direction speed
   Real &vz; // particle z/X3-direction speed
-  Real &ee; // particle frequency (in units of energy)
+  int &inu; // particle group
 };
 
 //----------------------------------------------------------------------------------------
@@ -76,7 +76,7 @@ KOKKOS_FORCEINLINE_FUNCTION void scatter_kernel(const T &vmesh, cell_scat_args c
     }
 
     // reset particle frequency
-    psa.ee = csa.hd * nu_bins(n);
+    psa.inu = n;
   }
 }
 

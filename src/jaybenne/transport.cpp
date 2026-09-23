@@ -39,15 +39,13 @@ TaskStatus TransportPhotons(MeshData<Real> *md, const Real t_start, const Real d
   const Real h = jb_pkg->template Param<Real>("planck_constant");
   const Real hinv = 1.0 / h;
   auto &eos = jb_pkg->template Param<EOS>("eos_d");
-  Opacity opacity;
-  Scattering scattering;
+  MeanOpacity opacity = jb_pkg->template Param<MeanOpacity>("mopacity_d");
+  MeanScattering scattering = jb_pkg->template Param<MeanScattering>("mscattering_d");
   int n_nubins = JaybenneNull<int>();
   Real dlnu = JaybenneNull<Real>();
   std::vector<Real> nu_grid = JaybenneNull<std::vector<Real>>();
   ParArray1D<Real> nu_bins;
   if constexpr (FT == FrequencyType::multigroup) {
-    opacity = jb_pkg->template Param<Opacity>("opacity_d");
-    scattering = jb_pkg->template Param<Scattering>("scattering_d");
     n_nubins = jb_pkg->template Param<int>("n_nubins");
     // initialize (assumed) log-spaced frequency bins
     dlnu = jb_pkg->template Param<Real>("dlnu");
@@ -72,9 +70,9 @@ TaskStatus TransportPhotons(MeshData<Real> *md, const Real t_start, const Real d
 
   // Create SwarmPacks
   static auto pdesc_r =
-      MakeSwarmPackDescriptor<sp::x, sp::y, sp::z, ph::v, ph::energy, ph::weight,
-                              ph::fraction, ph::time>(photons_swarm_name);
-  static auto pdesc_i = MakeSwarmPackDescriptor<ph::ijk>(photons_swarm_name);
+      MakeSwarmPackDescriptor<sp::x, sp::y, sp::z, ph::v, ph::weight, ph::fraction,
+                              ph::time>(photons_swarm_name);
+  static auto pdesc_i = MakeSwarmPackDescriptor<ph::ijk, ph::inu>(photons_swarm_name);
   auto ppack_r = pdesc_r.GetPack(md);
   auto ppack_i = pdesc_i.GetPack(md);
 
@@ -117,7 +115,7 @@ TaskStatus TransportPhotons(MeshData<Real> *md, const Real t_start, const Real d
           Real &vz = ppack_r(b, ph::v(2), n);
           Real &ww = ppack_r(b, ph::weight(), n);
           Real &fraction = ppack_r(b, ph::fraction(), n);
-          Real &ee = ppack_r(b, ph::energy(), n);
+          int &inu = ppack_i(b, ph::inu(), n);
 
           // Position and logical location of particle
           Real &x = ppack_r(b, sp::x(), n);
@@ -166,8 +164,8 @@ TaskStatus TransportPhotons(MeshData<Real> *md, const Real t_start, const Real d
               const Real &rho = vmesh(b, fjh::density(), kp, jp, ip);
               const Real &sie = vmesh(b, fjh::sie(), kp, jp, ip);
               const Real temp = eost.TemperatureFromDensityInternalEnergy(rho, sie);
-              ss = scatter.TotalScatteringCoefficient(rho, temp, hinvd * ee);
-              aa = opac.AbsorptionCoefficient(rho, temp, hinvd * ee);
+              ss = scatter.ScatteringCoefficient(rho, temp, inu);
+              aa = opac.AbsorptionCoefficient(rho, temp, inu);
             }
 
             // reset collision indicators
@@ -232,7 +230,7 @@ TaskStatus TransportPhotons(MeshData<Real> *md, const Real t_start, const Real d
             if (is_scattered) {
 
               // form particle scattering argument struct
-              ptcl_scat_args psa{rng_gen, vv, vx, vy, vz, ee};
+              ptcl_scat_args psa{rng_gen, vv, vx, vy, vz, inu};
 
               if constexpr (FT == FrequencyType::gray) {
 
